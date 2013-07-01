@@ -1,0 +1,15 @@
+{
+	"name": "fast",
+	"description": "A library that aims to provide the fastest possible implementation of some every day routines.",
+	"authors": ["Marco Leise"],
+	"homepage": "http://github.com/mleise/fast",
+	"license": "GPL v3",
+
+	"configurations": [
+		{
+			"name": "benchmark",
+			"targetType": "executable",
+			"versions": ["benchmark"]
+		}
+	]
+}
