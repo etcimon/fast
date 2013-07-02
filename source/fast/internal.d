@@ -12,7 +12,7 @@ package:
  * The results are then concatenated using an optional joiner.
  *
  * Params:
- *   elements = The elements you want to join. Only the length of this tuple is actually used and passed into format() as an incrementing number from [0 .. count).
+ *   elements = The elements you want to join. Only the length of this tuple is actually used and passed into format() as an incrementing number from [0 .. count$(RPAREN).
  *   fmt = The format string to apply on each instanciation. Use %1d$ to refer to the current index multiple times when necessary.
  *   joiner = Optional string that will be placed between instances. It could be a space or an arithmetic operation.
  *
@@ -40,13 +40,13 @@ enum ctfeJoin(elements...)(in string fmt, in string joiner = null)
 pure nothrow
 {
 	/**
-	 * Aligns a pointer to the closest multiple of 'pot' (a power of two),
-	 * which is equal to or larger than 'value'.
+	 * Aligns a pointer to the closest multiple of $(D pot) (a power of two),
+	 * which is equal to or larger than $(D value).
 	 */
 	T* alignPtrNext(T)(scope T* ptr, in size_t pot)
 	in { assert(pot > 0 && pot.isPowerOf2); }
 	body { return cast(T*) ((cast(size_t) ptr + (pot - 1)) & -pot); }
-	unittest { assert(alignPtrToNextMultipleOfPowerOfTwoValue(cast(void*) 65, 64) == cast(void*) 128); }
+	unittest { assert(alignPtrNext(cast(void*) 65, 64) == cast(void*) 128); }
 }
 
 @safe pure nothrow

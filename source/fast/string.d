@@ -1,12 +1,12 @@
 /**
  * Fast, non-allocating string functions.
- * 
+ *
  * Authors:
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
- * 
+ *
  * Copyright:
  *   © 2013 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
- * 
+ *
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
  */
@@ -30,7 +30,7 @@ import fast.internal;
  *   str = The string to scan.
  *   before = Iff the call was successful, the part before the split is stored here. Otherwise it remains unchanged.
  *   after = Iff the call was successful, the part after the split is stored here. Otherwise it remains unchanged.
- * 
+ *
  * Returns:
  *   $(D true), iff the symbol was found in the string.
  */
@@ -49,7 +49,7 @@ bool split(ch...)(scope inout(char[]) str, ref inout(char)[] before, ref inout(c
 /**
  * Similar to the overload for strings, this function works a little faster as it lacks boundary checks.
  * It assumes that one of the characters in $(D ch) is actually contained in the string.
- * 
+ *
  * Returns:
  *   The char that caused the split. (One of $(D ch).)
  */
@@ -72,11 +72,11 @@ char split(ch...)(scope inout(char*) ptr, ref inout(char)[] before, ref inout(ch
  *
  * Returns:
  *   If a match is found, the index into the string is returned.
- *   Otherwise an invalid index is returned. Check with if $(D (result < str.length)).
+ *   Otherwise an invalid index is returned. Check with if $(D (result &lt; str.length)).
  *
  * See_Also:
  *   split, $(LINK2 http://mischasan.wordpress.com/2011/11/09/the-generic-sse2-loop/, The Generic SSE2 Loop)
- * 
+ *
  * Example:
  * ---
  * // Check if there is a '/' or '\' in the string
@@ -89,17 +89,17 @@ size_t find(ch...)(scope inout(char[]) str) { return findImpl!(false, ch)(str.pt
 /**
  * Same as the overload for strings, but with only a char*, making it faster as it cannot do a
  * boundary check.
- * 
+ *
  * Sometimes when looking for a character it is helpful to append it as a sentinel to the char buffer
  * and then use this function instead of the slower one that checks the boundary constantly.
- * 
+ *
  * Example:
  * ---
- * // Find an ')' in a buffer of 1024 bytes using an additional sentinel.
+ * // Find an '$(RPAREN)' in a buffer of 1024 bytes using an additional sentinel.
  * size_t length = 1024;
  * char[] buffer = new char[](length+1);
- * buffer[length] = ')';
- * auto pos = buffer.ptr.find!(')');
+ * buffer[length] = '$(RPAREN)';
+ * auto pos = buffer.ptr.find!('$(RPAREN)');
  * if (pos < length) { // was an actual find before the sentinel }
  * ---
  */
@@ -150,7 +150,7 @@ private:
 
 /**
  * Template for searching a fixed value in a word sized memory block (i.e. 1, 2, 4 or 8 bytes).
- * 
+ *
  * Params:
  *   value = The value you are looking for.
  *   word = The data word to search for the value.
