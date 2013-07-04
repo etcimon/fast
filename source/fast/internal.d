@@ -180,7 +180,7 @@ version (benchmark)
 		import fast.string, fast.uniconv;
 
 		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
-		static zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
+		static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
 		static pathSepRegex = ctRegex!`[/\\]`;
 		enum pathnameWStringLength = to!wstring(pathname).length;
 
@@ -189,24 +189,22 @@ version (benchmark)
 		    benchmark ("uniconv.stackToWString", () { mixin stackToWString!("result", pathname); return result.ptr[pathnameWStringLength]; }),
 		);
 
-		run ("Check that there are no tabs in a string...", true,
-		    benchmark ("std.string.indexOf", () { return std.string.indexOf(zeroterm, '\t') == -1; }),
-		    benchmark ("algorithm.countUntil", () { return countUntil(zeroterm, '\t') == -1; }),
-		    benchmark ("foreach", () { foreach (ref c; zeroterm) if (c == '\t') return false; return true; }),
-		    benchmark ("fast.string.find", () { return !(fast.string.find!'\t'(zeroterm) < zeroterm.length); }),
+		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
+		     benchmark (`while + if with 4 cond`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
+		     benchmark ("fast.string.find", () { string before, after = zeroterm; while (fast.string.split!('<', '>', '&', '"')(after, before, after)) {} return before; }),
 		);
 
 		run ("Find terminating zero in a string...", zeroterm.length - 1,
-		    benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
-		    benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
-		    benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
-		    benchmark ("fast.string.find", () { return fast.string.find!'\0'(zeroterm.ptr); }),
+		     benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
+		     benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
+		     benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
+		     benchmark ("fast.string.find", () { return fast.string.find!'\0'(zeroterm.ptr); }),
 		);
 
 		run ("Split a path by '/' or '\\'...", "slashes",
-		    benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
-		    benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
-		    benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!('\\', '/')(after, before, after)) {} return after; }),
+		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
+		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
+		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!('\\', '/')(after, before, after)) {} return before; }),
 		);
 
 		writeln("Benchmark done!");

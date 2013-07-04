@@ -26,23 +26,24 @@ import fast.internal;
  * Splits a string in two around one or more compile-time known code units.
  *
  * Params:
- *   ch = The code unit(s) that initiates the split. It is typically an ASCII symbol.
+ *   ch... = The code unit(s) that initiates the split. It is typically an ASCII symbol.
  *   str = The string to scan.
- *   before = Iff the call was successful, the part before the split is stored here. Otherwise it remains unchanged.
- *   after = Iff the call was successful, the part after the split is stored here. Otherwise it remains unchanged.
+ *   before = The part before the split is stored here. If no character in $(D ch...) is found, the original string is returned here.
+ *   after = The part after the split is stored here. If no character in $(D ch...) is found, $(D null) is returned here.
  *
  * Returns:
  *   $(D true), iff the symbol was found in the string.
  */
 bool split(ch...)(scope inout(char[]) str, ref inout(char)[] before, ref inout(char)[] after, char* splitter = null)
 {
-	immutable pos = findImpl!(false, ch)(str.ptr, str.length);
+	immutable pos = min (str.length, findImpl!(false, ch)(str.ptr, str.length));
+	before = str[0 .. pos];
 	if (pos < str.length) {
-		before = str[0 .. pos];
 		after = str[pos+1 .. $];
 		if (splitter) *splitter = str[pos];
 		return true;
 	}
+	after = null;
 	return false;
 }
 

@@ -4,5 +4,5 @@
 /.dub/
 /obj/
 fast
-fast.dproj
-fast.sln
+/mono-d/
+
