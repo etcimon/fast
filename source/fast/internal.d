@@ -113,7 +113,7 @@ pure nothrow
 			else
 				static assert(0, "Incorrect type ");
 			immutable VectorType arr = scalar;
-			ref V get() { return *cast(V*) &arr; }
+			ref V get() @trusted { return *cast(V*) &arr; }
 			alias SIMDFromScalar = get;
 		} else {
 			immutable V asVector = scalar;
