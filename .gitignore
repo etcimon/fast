@@ -3,6 +3,7 @@
 /docs/
 /.dub/
 /obj/
+/bin/
 fast
 /mono-d/
 
