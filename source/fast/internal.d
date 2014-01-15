@@ -56,14 +56,6 @@ pure nothrow
 	in { assert(n > 0); }
 	body { return (n & n - 1) == 0; }
 
-
-	version (X86)
-		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
-	else version (X86_64)
-		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
-	else
-		enum hasSSE2 = false;
-
 	version (LDC) {
 		enum isLDC = true;
 		enum isGDC = false;
@@ -77,6 +69,13 @@ pure nothrow
 		enum isGDC = false;
 		enum isDMD = true;
 	}
+	
+	version (X86)
+		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
+	else version (X86_64)
+		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
+	else
+		enum hasSSE2 = false;
 
 	version (LDC) {
 		pragma(LDC_intrinsic, "llvm.x86.sse2.pmovmskb.128")
@@ -88,46 +87,56 @@ pure nothrow
 
 	template SIMDFromScalar(V, alias scalar)
 	{
-		version (LDC) {
-			// I couldn't define an immutable vector otherwise.
-			static if(is(V == double2))
-				alias double[2] VectorType;
-			else static if(is(V == float4))
-				alias float[4] VectorType;
-			else static if(is(V == long2))
-				alias long[2] VectorType;
-			else static if(is(V == ulong2))
-				alias ulong[2] VectorType;
-			else static if(is(V == int4))
-				alias int[4] VectorType;
-			else static if(is(V == uint4))
-				alias uint[4] VectorType;
-			else static if(is(V == short8))
-				alias short[8] VectorType;
-			else static if(is(V == ushort8))
-				alias ushort[8] VectorType;
-			else static if(is(V == byte16))
-				alias byte[16] VectorType;
-			else static if(is(V == ubyte16))
-				alias ubyte[16] VectorType;
-			else
-				static assert(0, "Incorrect type ");
-			immutable VectorType arr = scalar;
-			ref V get() @trusted { return *cast(V*) &arr; }
-			alias SIMDFromScalar = get;
-		} else {
-			immutable V asVector = scalar;
-			alias SIMDFromScalar = asVector;
+		// This wrapper is needed for optimal performance with LDC and
+		// doesn't hurt GDC's inlining.
+		V SIMDFromScalar() {
+			enum V asVectorEnum = scalar;
+			return asVectorEnum;
 		}
 	}
 }
 
+version (benchmark)
+{
+	void main()
+	{
+		import std.stdio, std.algorithm, std.regex, std.utf, std.conv;
+		import fast.string, fast.uniconv;
+
+		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
+		static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
+		static pathSepRegex = ctRegex!`[/\\]`;
+		enum pathnameWStringLength = to!wstring(pathname).length;
+		
+		run("Convert a string to a wchar*...", cast(wchar)'\0',
+		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
+		    benchmark ("uniconv.stackToWString", () { mixin stackToWString!("result", pathname); return result.ptr[pathnameWStringLength]; }),
+		);
+
+		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
+		     benchmark (`while+if with 4 cond.`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
+		     benchmark ("fast.string.split", () { string before, after = zeroterm; while (fast.string.split!`or(or(=<,=>),or(=&,="))`(after, before, after)) {} return before; }),
+		);
+
+		run ("Find terminating zero in a string...", zeroterm.length - 1,
+		     benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
+		     benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
+		     benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
+		     benchmark ("fast.string.find", () { return fast.string.find!"=\0"(zeroterm.ptr); }),
+		);
+
+		run ("Split a path by '/' or '\\'...", "slashes",
+		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
+		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
+		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!`or(=\,=/)`(after, before, after)) {} return before; }),
+		);
+		
+		writeln("Benchmark done!");
+	}
+
 
 
 private:
-
-version (benchmark)
-{
 
 	struct Benchmark(R)
 	{
@@ -172,41 +181,5 @@ version (benchmark)
 			}
 		}
 		writeln();
-	}
-
-	void main()
-	{
-		import std.stdio, std.algorithm, std.regex, std.utf, std.conv;
-		import fast.string, fast.uniconv;
-
-		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
-		static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
-		static pathSepRegex = ctRegex!`[/\\]`;
-		enum pathnameWStringLength = to!wstring(pathname).length;
-
-		run("Convert a string to a wchar*...", cast(wchar)'\0',
-		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
-		    benchmark ("uniconv.stackToWString", () { mixin stackToWString!("result", pathname); return result.ptr[pathnameWStringLength]; }),
-		);
-
-		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
-		     benchmark (`while + if with 4 cond`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
-		     benchmark ("fast.string.find", () { string before, after = zeroterm; while (fast.string.split!('<', '>', '&', '"')(after, before, after)) {} return before; }),
-		);
-
-		run ("Find terminating zero in a string...", zeroterm.length - 1,
-		     benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
-		     benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
-		     benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
-		     benchmark ("fast.string.find", () { return fast.string.find!'\0'(zeroterm.ptr); }),
-		);
-
-		run ("Split a path by '/' or '\\'...", "slashes",
-		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
-		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
-		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!('\\', '/')(after, before, after)) {} return before; }),
-		);
-
-		writeln("Benchmark done!");
 	}
 }
