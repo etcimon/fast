@@ -100,7 +100,7 @@ version (benchmark)
 {
 	void main()
 	{
-		import std.stdio, std.algorithm, std.regex, std.utf, std.conv;
+		import std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string;
 		import fast.string, fast.uniconv;
 
 		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
@@ -110,8 +110,14 @@ version (benchmark)
 		
 		run("Convert a string to a wchar*...", cast(wchar)'\0',
 		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
-		    benchmark ("uniconv.stackToWString", () { mixin stackToWString!("result", pathname); return result.ptr[pathnameWStringLength]; }),
-		);
+		    benchmark ("cstring.wcharPtr", () { return wcharPtr!pathname[pathnameWStringLength]; }),
+		    );
+
+		run("Convert a string to a char*...", '\0',
+		    benchmark ("toUTFz", () { return toUTFz!(char*)(pathname)[pathname.length]; }),
+		    benchmark ("toStringz", () { return cast(char) toStringz(pathname)[pathname.length]; }),
+		    benchmark ("cstring.charPtr", () { return cast(char) charPtr!pathname[pathname.length]; }),
+		    );
 
 		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
 		     benchmark (`while+if with 4 cond.`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
