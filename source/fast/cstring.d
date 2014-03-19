@@ -10,7 +10,7 @@
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
  */
-module fast.uniconv;
+module fast.cstring;
 
 import core.stdc.stdlib;
 
@@ -27,10 +27,10 @@ import core.stdc.stdlib;
  *   The part of the destination buffer used for the conversion as a $(D wchar[]).
  *   A terminating zero is appended, so the result.ptr can be passed into Windows APIs.
  */
-wchar[] toWstring(scope inout(char[]) src, wchar* dst) pure nothrow
+wchar[] toWstring(in char[] src, wchar* dst) pure nothrow
 {
-	inout char* srcEnd = src.ptr + src.length;
-	inout(char)* srcIt = src.ptr;
+	const char* srcEnd = src.ptr + src.length;
+	const(char)* srcIt = src.ptr;
 	wchar* dstIt = dst;
 
 	while (srcIt !is srcEnd)
@@ -146,11 +146,21 @@ immutable(char)* charPtr(alias str)() if (__traits(compiles, { enum e = str; }))
 	return str.ptr;
 }
 
+/**
+ * Returns the given $(D ptr) up to but not including the \0 as a $(D char[]).
+ */
+inout(char)[] toString(inout(char*) ptr)
+{
+	import core.stdc.string;
+	if (ptr is null) return null;
+	return ptr[0 .. strlen(ptr)];
+}
+
 
 
 private:
 
-private enum allocaLimit = 1024;
+enum allocaLimit = 1024;
 
 struct InstantBuffer(T)
 {

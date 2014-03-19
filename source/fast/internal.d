@@ -101,13 +101,13 @@ version (benchmark)
 	void main()
 	{
 		import std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string;
-		import fast.string, fast.uniconv;
+		import fast.string, fast.cstring;
 
 		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
 		static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
 		static pathSepRegex = ctRegex!`[/\\]`;
 		enum pathnameWStringLength = to!wstring(pathname).length;
-		
+
 		run("Convert a string to a wchar*...", cast(wchar)'\0',
 		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
 		    benchmark ("cstring.wcharPtr", () { return wcharPtr!pathname[pathnameWStringLength]; }),
