@@ -1,4 +1,5 @@
-/**
+/*******************************************************************************
+ * 
  * Converts between UTF-8 and UTF-16.
  * 
  * Authors:
@@ -9,15 +10,19 @@
  * 
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
- */
-module fast.cstring;
+ * 
+ **************************************/
+module fast.cstring; @nogc nothrow:
 
 import core.stdc.stdlib;
+import core.stdc.string;
+//import std.traits;
+import fast.buffer;
 
 
 /**
  * Converts a string to a wstring using a buffer provided by the user.
- * To get the buffer requirements call $(D toWStringSize) on your source buffer.
+ * To get the buffer requirements call $(D wstringSize) on your source buffer.
  *
  * Params:
  *   src = The UTF-8 string to convert.
@@ -27,7 +32,8 @@ import core.stdc.stdlib;
  *   The part of the destination buffer used for the conversion as a $(D wchar[]).
  *   A terminating zero is appended, so the result.ptr can be passed into Windows APIs.
  */
-wchar[] toWstring(in char[] src, wchar* dst) pure nothrow
+pure
+wchar[] string2wstring(in char[] src, wchar* dst)
 {
 	const char* srcEnd = src.ptr + src.length;
 	const(char)* srcIt = src.ptr;
@@ -55,7 +61,11 @@ wchar[] toWstring(in char[] src, wchar* dst) pure nothrow
 		}
 
 		// do we need to store a surrogate pair ?
-		if (ch > wchar.max)
+		static if (is(wchar == dchar))
+		{
+			*dstIt++ = ch;
+		}
+		else if (ch > wchar.max)
 		{
 			*dstIt++ = (ch >> 10) | 0xD800;
 			*dstIt++ = (ch & 0b11_1111_1111) | 0xDC00;
@@ -71,28 +81,107 @@ wchar[] toWstring(in char[] src, wchar* dst) pure nothrow
 }
 
 /**
- * Calculates the required length for a string to wstring conversion.
+ * Calculates the required buffer size in bytes for a string to wchar[] conversion.
  * Room for a terminating '\0' is included.
  *
  * Params:
  *   src = The source string.
  *
  * Returns:
- *   The maximal length the source string would require as a wstring plus '\0'.
+ *   The maximum byte count the source string could require, including the terminating '\0'.
  *
  * See_Also:
- *   toWstring
+ *   string2wstring
  *   
  */
-size_t wstringSize(scope inout(char[]) src) @safe pure nothrow
+@safe pure
+size_t string2wstringSize(in char[] src)
 {
-	return 2 * (src.length + 1);
+	enum limit = size_t.max / wchar.sizeof - 1;
+	return src.length <= limit ? wchar.sizeof * (src.length + 1) : size_t.max;
+}
+
+
+/**
+ * Converts a wstring to a string using a buffer provided by the user.
+ * To get the buffer requirements call $(D stringSize) on your source buffer.
+ *
+ * Params:
+ *   src = The UTF-8 string to convert.
+ *   dst = The destination buffer for the conversion.
+ *
+ * Returns:
+ *   The part of the destination buffer used for the conversion as a $(D wchar[]).
+ *   A terminating zero is appended, so the result.ptr can be passed into Windows APIs.
+ */
+pure
+char[] wstring2string(in wchar[] src, char* dst)
+{
+	const wchar* srcEnd = src.ptr + src.length;
+	const(wchar)* srcIt = src.ptr;
+	char* dstIt = dst;
+
+	while (srcIt !is srcEnd)
+	{
+		if (*srcIt < 0x80)
+		{
+			*dstIt++ = cast(char) *srcIt++;
+		}
+		else if (*srcIt < 0x800)
+		{
+			*dstIt++ = cast(char) (0b_11000000 | *srcIt >> 6);
+			*dstIt++ = 0b_10000000 | 0b_00111111 & *srcIt++;
+		}
+		if (*srcIt < 0xD800 || *srcIt > 0xDBFF)
+		{
+			// anything else within the BMP (<= 0xFFFF), but not a high surrogate
+			*dstIt++ = 0b_11100000 | *srcIt >> 12;
+			*dstIt++ = 0b_10000000 | 0b_00111111 & *srcIt >> 6;
+			*dstIt++ = 0b_10000000 | 0b_00111111 & *srcIt++;
+		}
+		else
+		{
+			// high surrogate, assume correct encoding and that the next wchar is the low surrogate
+			dchar decoded;
+			decoded = (*srcIt++ & 0b11_1111_1111) << 10;
+			decoded |= (*srcIt++ & 0b11_1111_1111);
+			*dstIt++ = 0b_11110000 | decoded >> 18;
+			*dstIt++ = 0b_10000000 | 0b_00111111 & decoded >> 12;
+			*dstIt++ = 0b_10000000 | 0b_00111111 & decoded >> 6;
+			*dstIt++ = 0b_10000000 | 0b_00111111 & decoded;
+		}
+	}
+	*dstIt = 0;
+	
+	return dst[0 .. dstIt - dst];
 }
 
 /**
- * Replaces $(D std.utf.toUTFz) with a version that uses the stack as long as
- * the input length is <= 511 chars. Longer strings use $(D malloc) to create
- * a buffer for the conversion. It is freed at least at the end of the scope.
+ * Calculates the required buffer size in bytes for a wstring to char[] conversion.
+ * Room for a terminating '\0' is included.
+ *
+ * Params:
+ *   src = The source string.
+ *
+ * Returns:
+ *   The maximum byte count the source string could require, including the terminating '\0'.
+ *
+ * See_Also:
+ *   wstring2string
+ *   
+ */
+@safe pure
+size_t wstring2stringSize(in wchar[] src)
+{
+	enum limit = (size_t.max / char.sizeof - 1) / 3;
+	return src.length <= limit ? char.sizeof * (3 * src.length + 1) : size_t.max;
+}
+
+
+/**
+ * Replaces $(D std.utf.toUTFz) with a version that uses the stack as long as the required bytes for the output are
+ * <= 1k. Longer strings use $(D malloc) to create a buffer for the conversion. It is freed at least at the end of the
+ * scope.
  * 
  * Params:
  *   str = The source string to convert.
@@ -106,12 +195,20 @@ size_t wstringSize(scope inout(char[]) src) @safe pure nothrow
  * WinApiW(wcharPtr!text);
  * ---
  */
-auto wcharPtr(alias str)(void* buffer = wstringSize(str) <= allocaLimit ? alloca(wstringSize(str)) : null)
+auto wcharPtr(alias str)(void* buffer = string2wstringSize(str) <= allocaLimit ? alloca(string2wstringSize(str)) : null)
 {
 	// In any case we have to return a proper InstantBuffer, so that free() is called in the dtor at some point.
-	return InstantBuffer!wchar(
-		toWstring(str, cast(wchar*) (buffer ? buffer : malloc(wstringSize(str)))).ptr,
-		!buffer);
+	return TempBuffer!wchar(
+		string2wstring(str, cast(wchar*) (buffer ? buffer : malloc(string2wstringSize(str)))),
+		buffer is null);
+}
+
+/// ditto
+immutable(wchar)* wcharPtr(alias wstr)()
+	if (is(typeof(wstr) == wstring) && __traits(compiles, { enum wstring e = wstr; }))
+{
+	// D string literals (known at compile time) are always \0-terminated.
+	return wstr.ptr;
 }
 
 /**
@@ -131,44 +228,46 @@ auto wcharPtr(alias str)(void* buffer = wstringSize(str) <= allocaLimit ? alloca
  * linuxApi(charPtr!text);
  * ---
  */
-auto charPtr(alias str)(void* buffer = str.length < allocaLimit ? alloca(str.length + 1) : null)
+auto charPtr(alias str)(void* buffer = alloca(str.length + 1))
+	if (is(typeof(str) : const(char)[]))
 {
-	import core.stdc.string;
 	char* dst = cast(char*) memcpy(buffer ? buffer : malloc(str.length + 1), str.ptr, str.length);
 	dst[str.length] = '\0';
-	return InstantBuffer!char(dst, !buffer);
+	return TempBuffer!char(dst[0 .. str.length], buffer is null);
 }
 
 /// ditto
-immutable(char)* charPtr(alias str)() if (__traits(compiles, { enum e = str; }))
+immutable(char)* charPtr(alias str)()
+	if (__traits(compiles, { enum string e = str; }))
 {
 	// D string literals (known at compile time) are always \0-terminated.
 	return str.ptr;
 }
 
 /**
- * Returns the given $(D ptr) up to but not including the \0 as a $(D char[]).
+ * This overload allocates the required memory from an existing stack buffer.
+ *
+ * Params:
+ *   str = The source string to convert to a C UTF-8 string
+ *   sb = The stack buffer to allocate from
+ * 
+ * Note:
+ *   Always assign the result to an auto variable first for RAII to work correctly.
  */
-inout(char)[] toString(inout(char*) ptr)
+StackBufferEntry!char charPtr(SB)(const(char)[] str, ref SB sb)
+	if (is(SB == StackBuffer!bytes, bytes...))
 {
-	import core.stdc.string;
-	if (ptr is null) return null;
-	return ptr[0 .. strlen(ptr)];
+	auto buffer = sb.alloc!char(str.length + 1);
+	memcpy(buffer.ptr, str.ptr, str.length);
+	buffer[str.length] = '\0';
+	return buffer;
 }
 
-
-
-private:
-
-enum allocaLimit = 1024;
-
-struct InstantBuffer(T)
+/**
+ * Returns the given $(D ptr) up to but not including the \0 as a $(D char[]).
+ */
+inout(char)[] asString(inout(char*) ptr) @trusted pure
 {
-	T* ptr;
-	bool callFree;
-	
-	alias ptr this;
-	
-	@disable this(this);
-	~this() { if (callFree) free(ptr); }
+	if (ptr is null) return null;
+	return ptr[0 .. strlen(ptr)];
 }

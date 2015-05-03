@@ -22,7 +22,7 @@ package:
  * See_Also:
  *   $(LINK2 http://forum.dlang.org/thread/vqfvihyezbmwcjkmpzin@forum.dlang.org, A simple way to do compile time loop unrolling)
  */
-enum ctfeJoin(elements...)(in string fmt, in string joiner = null)
+enum ctfeJoin(size_t length)(in string fmt, in string joiner = null)
 {
 	import std.range : iota;
 	import std.string : format;
@@ -30,14 +30,14 @@ enum ctfeJoin(elements...)(in string fmt, in string joiner = null)
 
 	// BUG: Cannot use, join(), as it "cannot access the nested function 'ctfeJoin'".
 	string result;
-	foreach (inst; map!(i => format(fmt, i))(iota(elements.length))) {
+	foreach (inst; map!(i => format(fmt, i))(iota(length))) {
 		if (result && joiner) result ~= joiner;
 		result ~= inst;
 	}
 	return result;
 }
 
-pure nothrow
+pure nothrow @nogc
 {
 	/**
 	 * Aligns a pointer to the closest multiple of $(D pot) (a power of two),
@@ -49,7 +49,7 @@ pure nothrow
 	unittest { assert(alignPtrNext(cast(void*) 65, 64) == cast(void*) 128); }
 }
 
-@safe pure nothrow
+@safe pure nothrow @nogc
 {
 	/// Returns whether the (positive) argument is an integral power of two.
 	@property bool isPowerOf2(in size_t n)
@@ -71,9 +71,9 @@ pure nothrow
 	}
 	
 	version (X86)
-		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
+		enum hasSSE2 = simdVer >= SIMDVer.SSE2;
 	else version (X86_64)
-		enum hasSSE2 = sseVer >= SIMDVer.SSE2;
+		enum hasSSE2 = simdVer >= SIMDVer.SSE2;
 	else
 		enum hasSSE2 = false;
 
@@ -100,43 +100,60 @@ version (benchmark)
 {
 	void main()
 	{
-		import std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string;
-		import fast.string, fast.cstring;
+		import core.stdc.string, core.stdc.stddef, core.stdc.stdlib;
+		import std.array, std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string;
+		import fast.string, fast.cstring, fast.buffer;
 
+		static immutable part1 = "C:\\";
+		static immutable part2 = "Documents and Settings\\User\\My Documents\\My Downloads\\";
+		static immutable part3 = "Fast.zip";
 		static immutable pathname = "hello/i_am_a/path_name\\with_several_different\\slashes";
 		static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
 		static pathSepRegex = ctRegex!`[/\\]`;
-		enum pathnameWStringLength = to!wstring(pathname).length;
+		enum pathnameWStringLength = to!(immutable(wchar_t)[])(pathname).length;
 
-		run("Convert a string to a wchar*...", cast(wchar)'\0',
+
+		run ("Concatenate a known number of strings...", part1.length + part2.length + part3.length,
+			benchmark ("std.array.appender", () { auto app = appender(part1); app ~= part2; app ~= part3; return app.data.length; }),
+			benchmark ("~", () { string path = part1 ~ part2 ~ part3; return path.length; }),
+			benchmark ("fast.string.concat", () { auto path = concat!(part1, part2, part3); return path.length; }),
+			);
+
+		run ("Allocate a temporary char buffer and fill it with 0xFF...", '\xFF',
+		     benchmark ("new", () { auto str = new char[](zeroterm.length); return str[$-1]; }),
+		     benchmark ("malloc", () { auto ptr = cast(char*) malloc(zeroterm.length); scope(exit) free(ptr); memset(ptr, 0xFF, zeroterm.length); return ptr[zeroterm.length-1]; }),
+		     benchmark ("fast.buffer.tempBuffer", () { auto buf = tempBuffer!(char, zeroterm.length); memset(buf, 0xFF, zeroterm.length); return buf[$-1]; }),
+			);
+
+		run("Convert a string to a wchar*...", wchar('\0'),
 		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
-		    benchmark ("cstring.wcharPtr", () { return wcharPtr!pathname[pathnameWStringLength]; }),
-		    );
+		    benchmark ("cstring.wcharPtr", () { return wcharPtr!pathname.ptr[pathnameWStringLength]; }),
+			);
 
 		run("Convert a string to a char*...", '\0',
 		    benchmark ("toUTFz", () { return toUTFz!(char*)(pathname)[pathname.length]; }),
 		    benchmark ("toStringz", () { return cast(char) toStringz(pathname)[pathname.length]; }),
 		    benchmark ("cstring.charPtr", () { return cast(char) charPtr!pathname[pathname.length]; }),
-		    );
+			);
 
 		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
 		     benchmark (`while+if with 4 cond.`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
 		     benchmark ("fast.string.split", () { string before, after = zeroterm; while (fast.string.split!`or(or(=<,=>),or(=&,="))`(after, before, after)) {} return before; }),
-		);
+			);
 
 		run ("Find terminating zero in a string...", zeroterm.length - 1,
 		     benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
 		     benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
 		     benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
-		     benchmark ("fast.string.find", () { return fast.string.find!"=\0"(zeroterm.ptr); }),
-		);
+		     benchmark ("fast.string.find", () { return cast(size_t) (fast.string.find!"=\0"(zeroterm.ptr) - zeroterm.ptr); }),
+			);
 
 		run ("Split a path by '/' or '\\'...", "slashes",
 		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
 		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
 		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!`or(=\,=/)`(after, before, after)) {} return before; }),
-		);
-		
+			);
+
 		writeln("Benchmark done!");
 	}
 
