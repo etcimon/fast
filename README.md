@@ -8,7 +8,7 @@ The contained functions avoid GC allocations and input validation. They may use 
 #### Benchmark
 A benchmark is included and can be run through dub, e.g.:
 
-    dub --config=benchmark --build=release --compiler=gdc
+    dub --build=release --compiler=gdc
 
 #### Examples
 ##### SSE3 accelerated splitting around '/' and '\'

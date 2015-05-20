@@ -137,6 +137,8 @@ inout(char)* find(string match)(inout(char*) ptr) pure nothrow
 nothrow @nogc
 template concat(Strs...)
 {
+	import core.stdc.string : memcpy;
+
 	enum allocExpr = ctfeJoin!(Strs.length)("Strs[%s].length", "+") ~ "+1";
 
 	auto concat(void* buffer = (mixin(allocExpr) <= allocaLimit) ? alloca(mixin(allocExpr)) : null)
@@ -157,6 +159,7 @@ template concat(Strs...)
 		return result;
 	}
 }
+
 
 
 private:
@@ -193,12 +196,9 @@ template SimdMatcher(string match)
 		enum lows = size_t.max / 0xFF;
 		enum highs = lows * 0x80;
 		
-		enum betterUseTables()
-		{
-			return (isDMD && matchCode.complexity >= 4)
+		enum betterUseTables = (isDMD && matchCode.complexity >= 4)
 			|| (isGDC && matchCode.complexity >= 18)
 			|| (isLDC && matchCode.complexity >= 18);
-		}
 
 		static if (betterUseTables)
 		{
@@ -232,13 +232,12 @@ template SimdMatcher(string match)
 				}
 			}
 			
-			const(char)* find(scope inout(char*) b) pure nothrow @nogc
+			inout(char)* find(scope inout(char*) b) pure nothrow @nogc
 			{
 				import core.stdc.string;
-				
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar && singleChar == '\0') {
-					return strlen(b);
+					return strlen(b) + b;
 				} else static if (isSingleChar && isDMD) { // DMD is better off using optimized C library code.
 					return memchr(b, singleChar, e - b) - b;
 				} else {
@@ -303,7 +302,7 @@ template SimdMatcher(string match)
 				
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar && singleChar == '\0') {
-					return b + strlen(b);
+					return strlen(b) + b;
 				} else static if (isSingleChar && isDMD) { // DMD is better off using optimized C library code.
 					return cast(inout(char*)) memchr(b, singleChar, size_t.max);
 				} else {

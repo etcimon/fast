@@ -101,9 +101,11 @@ version (benchmark)
 	void main()
 	{
 		import core.stdc.string, core.stdc.stddef, core.stdc.stdlib;
-		import std.array, std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string;
-		import fast.string, fast.cstring, fast.buffer;
+		import std.array, std.stdio, std.algorithm, std.regex, std.utf, std.conv, std.string, std.range;
+		import fast.string, fast.cstring, fast.buffer, fast.format;
+		import std.format : formattedWrite;
 
+		static immutable nums = { ulong[1uL << 8] nums = void; foreach (i; 0 .. nums.length) nums[i] = (1uL << (64 - 8)) * i; return nums; }();
 		static immutable part1 = "C:\\";
 		static immutable part2 = "Documents and Settings\\User\\My Documents\\My Downloads\\";
 		static immutable part3 = "Fast.zip";
@@ -112,17 +114,21 @@ version (benchmark)
 		static pathSepRegex = ctRegex!`[/\\]`;
 		enum pathnameWStringLength = to!(immutable(wchar_t)[])(pathname).length;
 
+		run ("Convert 256 numbers to fixed width hex strings...", 0x20,
+			benchmark ("std.*.formattedWrite", () { Appender!(char[]) app; app.reserve(16); char check = 0; foreach (ulong num; nums) { app.formattedWrite("%016X", num); check += app.data[0]; app.clear(); } return check; }),
+			benchmark ("fast.*.hexStrUpper", () { char[16] str; char check = 0; foreach (ulong num; nums) { str = hexStrUpper(num); check += str[0]; } return check; }),
+			);
 
 		run ("Concatenate a known number of strings...", part1.length + part2.length + part3.length,
 			benchmark ("std.array.appender", () { auto app = appender(part1); app ~= part2; app ~= part3; return app.data.length; }),
 			benchmark ("~", () { string path = part1 ~ part2 ~ part3; return path.length; }),
-			benchmark ("fast.string.concat", () { auto path = concat!(part1, part2, part3); return path.length; }),
+			benchmark ("fast.string.concat", () { size_t length; { auto path = concat!(part1, part2, part3); length = path.length; } return length; }),
 			);
 
 		run ("Allocate a temporary char buffer and fill it with 0xFF...", '\xFF',
 		     benchmark ("new", () { auto str = new char[](zeroterm.length); return str[$-1]; }),
 		     benchmark ("malloc", () { auto ptr = cast(char*) malloc(zeroterm.length); scope(exit) free(ptr); memset(ptr, 0xFF, zeroterm.length); return ptr[zeroterm.length-1]; }),
-		     benchmark ("fast.buffer.tempBuffer", () { auto buf = tempBuffer!(char, zeroterm.length); memset(buf, 0xFF, zeroterm.length); return buf[$-1]; }),
+		     benchmark ("fast.buffer.tempBuffer", () { char result; { auto buf = tempBuffer!(char, zeroterm.length); memset(buf, 0xFF, zeroterm.length); result = buf[$-1]; } return result; }),
 			);
 
 		run("Convert a string to a wchar*...", wchar('\0'),
@@ -141,16 +147,9 @@ version (benchmark)
 		     benchmark ("fast.string.split", () { string before, after = zeroterm; while (fast.string.split!`or(or(=<,=>),or(=&,="))`(after, before, after)) {} return before; }),
 			);
 
-		run ("Find terminating zero in a string...", zeroterm.length - 1,
-		     benchmark ("std.string.indexOf", () { return cast(size_t) std.string.indexOf(zeroterm, '\0'); }),
-		     benchmark ("algorithm.countUntil", () { return cast(size_t) countUntil(zeroterm, '\0'); }),
-		     benchmark ("while(*ptr) ptr++", () { auto ptr = zeroterm.ptr; while (*ptr) ptr++; return cast(size_t)  (ptr - zeroterm.ptr); }),
-		     benchmark ("fast.string.find", () { return cast(size_t) (fast.string.find!"=\0"(zeroterm.ptr) - zeroterm.ptr); }),
-			);
-
 		run ("Split a path by '/' or '\\'...", "slashes",
-		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
 		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
+		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
 		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!`or(=\,=/)`(after, before, after)) {} return before; }),
 			);
 
