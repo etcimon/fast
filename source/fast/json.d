@@ -51,10 +51,8 @@ import std.uni;
 
 import fast.buffer;
 import fast.cstring;
-import fast.format;
 import fast.helpers;
 import fast.parsing;
-import fast.string;
 
 
 /*******************************************************************************
