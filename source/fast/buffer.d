@@ -5,7 +5,7 @@
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  *
  * Copyright:
- *   © 2013 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
+ *   © 2015 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  *
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
@@ -15,9 +15,136 @@ module fast.buffer; nothrow
 import core.stdc.stdint;
 import core.stdc.stdlib;
 import std.range;
+import core.exception;
 
 
 enum allocaLimit = 2048;
+
+
+/*******************************************************************************
+ * 
+ * Dynamic array using `malloc`, `realloc` and `free` under the hood. Note that
+ * memory will be released on scope exit.
+ *
+ **************************************/
+struct RaiiArray(T)
+{
+private:
+
+	T*     m_ptr;
+	size_t m_capacity;
+
+
+public:
+
+	nothrow
+	this(size_t capacity)
+	{
+		if (capacity)
+		{
+			m_ptr = cast(T*) malloc(capacity);
+			if (m_ptr is null)
+				onOutOfMemoryError();
+			m_capacity = capacity;
+		}
+	}
+
+
+	nothrow @nogc
+	~this()
+	{
+		if (m_ptr !is null)
+			free(m_ptr);
+	}
+
+
+	@safe pure nothrow @nogc
+	@property inout(T)* ptr() inout
+	{
+		return m_ptr;
+	}
+
+
+	@safe pure nothrow @nogc
+	@property size_t capacity() const
+	{
+		return m_capacity;
+	}
+
+
+	nothrow
+	@property void capacity(size_t value)
+	{
+		if (value != 0)
+		{
+			if (T* ptrNew = cast(T*) realloc(m_ptr, value))
+				m_ptr = ptrNew;
+			else onOutOfMemoryError();
+		}
+		else if (m_ptr)
+		{
+			free(m_ptr);
+			m_ptr = null;
+		}
+		m_capacity = value;
+	}
+
+
+	alias length = capacity;
+
+
+	mixin Slicing;
+	mixin CapacityTools;
+}
+
+
+/*******************************************************************************
+ * 
+ * Fixed maximum number of items on the stack. Memory is a static stack buffer.
+ * This buffer can be filled up and cleared for reuse.
+ *
+ **************************************/
+struct LimitedScopeBuffer(T, size_t n)
+{
+private:
+
+	T[n]   m_data;
+	size_t m_used;
+
+
+public:
+
+	@safe pure nothrow @nogc
+	@property inout(T)* ptr() inout
+	{
+		return m_data.ptr;
+	}
+
+
+	@safe pure nothrow @nogc
+	@property size_t length() const
+	{
+		return m_used;
+	}
+
+	@safe pure nothrow @nogc
+	@property void length(size_t value)
+	in
+	{
+		assert( value <= n );
+	}
+	body
+	{
+		m_used = value;
+	}
+
+
+	@safe pure nothrow @nogc
+	inout(T)[] opSlice() inout
+	{
+		return m_data[0 .. m_used];
+	}
+}
 
 
 struct TempBuffer(T)
@@ -71,16 +198,16 @@ TempBuffer!T tempBuffer(T, alias length, size_t allocaLimit = .allocaLimit)
 
 /*******************************************************************************
  * 
- * Creates returns a structure to your stack that contains a buffer of
- * $(D bytes) size. Memory is allocated by calling $(D .alloc!T(count)) on it in
- * order to get $(D count) elements of type $(D T). The return value will be a
- * RAII structure that releases the memory back to the stack buffer upon
- * destruction, so it can be reused. The pointer within that RAII structure is
- * aligned to $(D T.alignof). If the internal buffer isn't enough to fulfill the
- * request including padding from alignment, then $(D malloc()) is used instead.
+ * Returns a structure to your stack that contains a buffer of $(D bytes) size.
+ * Memory is allocated by calling `.alloc!T(count)` on it in order to get
+ * `count` elements of type `T`. The return value will be a RAII structure
+ * that releases the memory back to the stack buffer upon destruction, so it can
+ * be reused. The pointer within that RAII structure is aligned to
+ * `T.alignof`. If the internal buffer isn't enough to fulfill the request
+ * including padding from alignment, then `malloc()` is used instead.
  * 
  * Warning:
- *   Always keep the return value of $(D .alloc()) around on your stack until
+ *   Always keep the return value of `.alloc()` around on your stack until
  *   you are done with its contents. Never pass it directly into functions as
  *   arguments!
  *
@@ -215,6 +342,60 @@ public:
 		@property auto range()
 		{
 			return ptr.asOutputRange();
+		}
+	}
+}
+
+
+
+private:
+
+mixin template Slicing()
+{
+	public
+	{
+		@nogc pure nothrow
+		ref inout(T) opIndex(size_t idx) inout
+		in
+		{
+			assert(idx < length);
+		}
+		body
+		{
+			return ptr[idx];
+		}
+
+
+		@nogc pure nothrow
+		inout(T)[] opSlice() inout
+		{
+			return ptr[0 .. length];
+		}
+		
+		
+		@nogc pure nothrow
+		inout(T)[] opSlice(size_t a, size_t b) inout
+		in
+		{
+			assert(a <= b && b <= length);
+		}
+		body
+		{
+			return ptr[a .. b];
+		}
+	}
+}
+
+
+mixin template CapacityTools()
+{
+	public
+	{
+		nothrow
+		void capacityNeeded(size_t c)
+		{
+			if (capacity < c)
+				capacity = c;
 		}
 	}
 }

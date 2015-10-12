@@ -1,0 +1,19 @@
+name "fast"
+description "A library that aims to provide the fastest possible implementation of some every day routines."
+homepage "http://github.com/mleise/fast"
+authors "Marco Leise"
+copyright "Copyright © 2015, Marco Leise"
+license "GPL-3.0"
+
+excludedSourceFiles "source/fast/doc.d"
+
+configuration "benchmark" {
+	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
+	targetType "executable"
+	versions "benchmark"
+}
+
+configuration "library" {
+	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
+	targetType "library"
+}

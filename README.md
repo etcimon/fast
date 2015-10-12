@@ -11,6 +11,16 @@ A benchmark is included and can be run through dub, e.g.:
     dub --build=release --compiler=gdc
 
 #### Examples
+##### Read JSON file with coordinates.
+```d
+struct Coord { double x, y, z; }
+
+void main()
+{
+    import fast.json;
+    auto coords = json.coordinates.read!(Coord[]);
+}
+```
 ##### SSE3 accelerated splitting around '/' and '\'
 ```d
 string rest = pathname

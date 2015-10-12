@@ -229,7 +229,7 @@ immutable(wchar)* wcharPtr(alias wstr)()
  * ---
  */
 auto charPtr(alias str)(void* buffer = alloca(str.length + 1))
-	if (is(typeof(str) : const(char)[]))
+	if (is(typeof(str) : const(char)[]) || is(typeof(str) : const(ubyte)[]))
 {
 	char* dst = cast(char*) memcpy(buffer ? buffer : malloc(str.length + 1), str.ptr, str.length);
 	dst[str.length] = '\0';

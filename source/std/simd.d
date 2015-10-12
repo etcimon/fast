@@ -27,6 +27,13 @@ else version(PPC)
 else version(PPC64)
 	version = PowerPC;
 
+version (X86_OR_X64)
+	version = HaveSIMD;
+version (PowerPC)
+	version = HaveSIMD;
+
+version (HaveSIMD):
+
 version(GNU)
 	version = GNU_OR_LDC;
 version(LDC)
@@ -81,7 +88,7 @@ version(X86_OR_X64)
 	}
 	
 	// we source this from the compiler flags, ie. -msse2 for instance
-	immutable SIMDVer simdVer = SIMDVer.SSE2;
+	immutable SIMDVer simdVer = SIMDVer.SSE42;
 	
 	enum string[SIMDVer.max+1] targetNames =
 	[
@@ -222,7 +229,10 @@ enum bool isSIMDVector(T) = is(T : __vector(V[N]), V, size_t N);
 template ElementType(T : __vector(V[N]), V, size_t N) if(isSIMDVector!T)
 {
 	alias Impl(T) = V;
-	alias ElementType = std.traits.ModifyTypePreservingSTC!(Impl, OriginalType!T);
+	static if (__VERSION__ < 2068)
+		alias ElementType = std.traits.ModifyTypePreservingSTC!(Impl, OriginalType!T);
+	else
+		alias ElementType = std.traits.ModifyTypePreservingTQ!(Impl, OriginalType!T);
 }
 
 enum NumElements(T : __vector(V[N]), V, size_t N) = N;
@@ -4326,13 +4336,11 @@ T transpose(SIMDVer Ver = simdVer, T)(inout T m)
 
 ///////////////////////////////////////////////////////////////////////////////
 // Unit test the lot!
-
+/*
 unittest
 {
 	import std.traits;
 	import std.typetuple;
-	import std.math;
-	import std.random;
 	import std.conv;
 	
 	template staticIota(int start, int end, int stride = 1)
@@ -4350,136 +4358,7 @@ unittest
 		else
 			alias staticRepeat = TypeTuple!(a, staticRepeat!(n - 1, a));
 	}
-	
-	static T randomVector(T, Rng)(int seed, ref Rng rng)
-	{
-		alias ET = ElementType!T;
-		
-		T r = void;
-		foreach(ref e; r.array)
-		{
-			static if(isFloatingPoint!ET)
-				e = uniform(cast(ET)-3.0, cast(ET)3.0, rng)^^5.0;
-			else
-				e = uniform(ET.min, ET.max, rng);
-		}
-		return r;
-	}
-	
-	static bool eq(bool approx = false, T)(T a, T b)
-	{
-		static if(isIntegral!T || is(T == bool))
-		{
-			return a == b;
-		}
-		else static if(isFloatingPoint!T)
-		{
-			if(a.isnan && b.isnan)
-				return true;
-			return feqrel(a, b) + 3 >= (approx ? T.mant_dig / 2 : T.mant_dig);
-		}
-		else static if(isStaticArray!T)
-		{
-			foreach(i; staticIota!(0, T.length))
-				if(!eq!approx(a[i], b[i]))
-					return false;
-			return true;
-		}
-	}
-	
-	static void byElement(SIMDVer Ver, bool approx, alias f, alias l, T...)(T v)
-	{
-		alias BT = ElementType!(T[0]);
-		
-		auto r = f!Ver(v);
-		
-		typeof(v[0].array) r2 = void;
-		foreach(i; staticIota!(0, r2.length))
-		{
-			// TODO: can't make a template work in this case >_<
-			static if(v.length == 1)
-				r2[i] = cast(BT)l(v[0].array[i]);
-			else static if(v.length == 2)
-				r2[i] = cast(BT)l(v[0].array[i], v[1].array[i]);
-			else static if(v.length == 3)
-				r2[i] = cast(BT)l(v[0].array[i], v[1].array[i], v[2].array[i]);
-		}
-		
-		assert(eq!(approx)(r.array, r2), "Incorrect result in function: " ~ f.stringof ~ " for type: " ~ T[0].stringof ~ " with SIMD Ver: " ~ Ver.stringof);
-	}
-	
-	static void byVector(SIMDVer Ver, bool approx, alias f, alias l, T...)(T v)
-	{
-		auto r = f!Ver(v);
-		
-		typeof(v[0].array) r2 = void;
-		
-		// TODO: can't make a template work in this case >_<
-		static if(v.length == 1)
-			r2 = l(v[0].array);
-		else static if(v.length == 2)
-			r2 = l(v[0].array, v[1].array);
-		else static if(v.length == 3)
-			r2 = l(v[0].array, v[1].array, v[2].array);
-		
-		assert(eq!(approx)(r.array, r2));
-	}
-	
-	static void testTypes(SIMDVer Ver, bool approx, alias testFunc, alias f, alias l, Types...)()
-	{
-		// for each type
-		foreach(T; Types)
-		{
-			// work out which vector widths are relevant
-			version(X86_OR_X64)
-			{
-				static if(Ver >= SIMDVer.AVX512)
-					alias Widths = TypeTuple!(128, 256, 512);
-				static if(Ver >= SIMDVer.AVX)
-					alias Widths = TypeTuple!(128, 256);
-				else
-					alias Widths = TypeTuple!(128);
-			}
-			else
-				alias Widths = TypeTuple!(128);
-			
-			// for each vector width
-			foreach(w; Widths)
-			{
-				auto rng = Xorshift128(w);
-				
-				// work out __vector type
-				enum numElements = w/(T.sizeof*8);
-				alias V = __vector(T[numElements]);
-				
-				// compile for the right number of args based on whether the function conpiles
-				V t;
-				static if(__traits(compiles, f!Ver(t)))
-				{
-					foreach(i; 0..16)
-						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng));
-				}
-				else static if(__traits(compiles, f!Ver(t, t)))
-				{
-					foreach(i; 0..16)
-						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng));
-				}
-				else static if(__traits(compiles, f!Ver(t, t, t)))
-				{
-					foreach(i; 0..16)
-						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng));
-				}
-				else static if(__traits(compiles, f!Ver(t, t, t, t)))
-				{
-					foreach(i; 0..16)
-						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng));
-				}
-				else
-					pragma(msg, "Unsupported: " ~ f.stringof ~ " with: " ~ V.stringof ~ " " ~ Ver.stringof);
-			}
-		}
-	}
-	
+
 	void testver(SIMDVer Ver)()
 	{
 		import std.math;
@@ -4606,3 +4485,140 @@ unittest
 	//    testver!(SIMDVer.AVX2);
 	//    testver!(SIMDVer.AVX512);
 }
+
+
+version (unittest)
+{
+	import std.random;
+	import std.math;
+
+	void testTypes(SIMDVer Ver, bool approx, alias testFunc, alias f, alias l, Types...)()
+	{
+		// for each type
+		foreach(T; Types)
+		{
+			// work out which vector widths are relevant
+			version(X86_OR_X64)
+			{
+				static if(Ver >= SIMDVer.AVX512)
+					alias Widths = TypeTuple!(128, 256, 512);
+				static if(Ver >= SIMDVer.AVX)
+					alias Widths = TypeTuple!(128, 256);
+				else
+					alias Widths = TypeTuple!(128);
+			}
+			else
+				alias Widths = TypeTuple!(128);
+			
+			// for each vector width
+			foreach(w; Widths)
+			{
+				auto rng = Xorshift128(w);
+				
+				// work out __vector type
+				enum numElements = w/(T.sizeof*8);
+				alias V = __vector(T[numElements]);
+				
+				// compile for the right number of args based on whether the function conpiles
+				V t;
+				static if(__traits(compiles, f!Ver(t)))
+				{
+					foreach(i; 0..16)
+						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng));
+				}
+				else static if(__traits(compiles, f!Ver(t, t)))
+				{
+					foreach(i; 0..16)
+						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng));
+				}
+				else static if(__traits(compiles, f!Ver(t, t, t)))
+				{
+					foreach(i; 0..16)
+						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng));
+				}
+				else static if(__traits(compiles, f!Ver(t, t, t, t)))
+				{
+					foreach(i; 0..16)
+						testFunc!(Ver, approx, f, l)(randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng), randomVector!V(i, rng));
+				}
+				else
+					pragma(msg, "Unsupported: " ~ f.stringof ~ " with: " ~ V.stringof ~ " " ~ Ver.stringof);
+			}
+		}
+	}
+
+	T randomVector(T, Rng)(int seed, ref Rng rng)
+	{
+		alias ET = ElementType!T;
+		
+		T r = void;
+		foreach(ref e; r.array)
+		{
+			static if(isFloatingPoint!ET)
+				e = uniform(cast(ET)-3.0, cast(ET)3.0, rng)^^5.0;
+			else
+				e = uniform(ET.min, ET.max, rng);
+		}
+		return r;
+	}
+
+	void byElement(SIMDVer Ver, bool approx, alias f, alias l, T...)(T v)
+	{
+		alias BT = ElementType!(T[0]);
+		
+		auto r = f!Ver(v);
+		
+		typeof(v[0].array) r2 = void;
+		foreach(i; staticIota!(0, r2.length))
+		{
+			// TODO: can't make a template work in this case >_<
+			static if(v.length == 1)
+				r2[i] = cast(BT)l(v[0].array[i]);
+			else static if(v.length == 2)
+				r2[i] = cast(BT)l(v[0].array[i], v[1].array[i]);
+			else static if(v.length == 3)
+				r2[i] = cast(BT)l(v[0].array[i], v[1].array[i], v[2].array[i]);
+		}
+		
+		assert(eq!(approx)(r.array, r2), "Incorrect result in function: " ~ f.stringof ~ " for type: " ~ T[0].stringof ~ " with SIMD Ver: " ~ Ver.stringof);
+	}
+
+	void byVector(SIMDVer Ver, bool approx, alias f, alias l, T...)(T v)
+	{
+		auto r = f!Ver(v);
+		
+		typeof(v[0].array) r2 = void;
+		
+		// TODO: can't make a template work in this case >_<
+		static if(v.length == 1)
+			r2 = l(v[0].array);
+		else static if(v.length == 2)
+			r2 = l(v[0].array, v[1].array);
+		else static if(v.length == 3)
+			r2 = l(v[0].array, v[1].array, v[2].array);
+		
+		assert(eq!(approx)(r.array, r2));
+	}
+
+	bool eq(bool approx = false, T)(T a, T b)
+	{
+		static if(isIntegral!T || is(T == bool))
+		{
+			return a == b;
+		}
+		else static if(isFloatingPoint!T)
+		{
+			if(a.isNaN && b.isNaN)
+				return true;
+			return feqrel(a, b) + 3 >= (approx ? T.mant_dig / 2 : T.mant_dig);
+		}
+		else static if(isStaticArray!T)
+		{
+			foreach(i; staticIota!(0, T.length))
+				if(!eq!approx(a[i], b[i]))
+					return false;
+			return true;
+		}
+	}
+}
+*/
