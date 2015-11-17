@@ -1052,7 +1052,7 @@ public:
 	 **************************************/
 	typeof(null) readNull()
 	{
-		skipNull!(false, isValidating)();
+		skipNull!(skipAllInter, isValidating)();
 		return null;
 	}
 
@@ -1334,6 +1334,16 @@ public:
 			m_text.skipAllOf!"\t\n\r ,:";
 		else
 			m_text.skipAsciiWhitespace();
+	}
+
+
+	debug
+	{
+		private void printState()
+		{
+			writeln( ">", m_text[0 .. 16], "<" );
+			stdout.flush();
+		}
 	}
 
 
@@ -1674,4 +1684,19 @@ unittest
 	t2.da = t1.da;
 	t2.aa = t1.aa;
 	assert(t1 == t2);
+}
+
+// Test case for Issue #4
+unittest
+{
+	auto str = `{"initiator_carrier_code":null,"a":"b"}`;
+	auto js = parseTrustedJSON(str);
+	foreach(key; js.byKey)
+	{
+		if(key == "initiator_carrier_code")
+		{
+			auto t = js.read!string;
+			assert(t is null);
+		}
+	}
 }
