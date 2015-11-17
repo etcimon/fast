@@ -68,7 +68,7 @@ import fast.parsing;
  *
  **************************************/
 auto parseJSONFile(uint vl = validateUsed)(in char[] fname)
-{ return parseJSONFile(fname.representation); }
+{ return parseJSONFile!vl(fname.representation); }
 
 /// ditto
 auto parseJSONFile(uint vl = validateUsed)(in ubyte[] fname)
@@ -88,7 +88,7 @@ auto parseJSONFile(uint vl = validateUsed)(in ubyte[] fname)
  *
  **************************************/
 auto parseJSON(uint vl = validateUsed, T : const(char)[])(T text) nothrow
-{ return parseJSONTextImpl!vl(text); }
+{ return Json!(vl, false)(text); }
 
 
 /*******************************************************************************
@@ -103,12 +103,12 @@ auto parseJSON(uint vl = validateUsed, T : const(char)[])(T text) nothrow
  *   A JSON file object exposing the `Json` API.
  *
  **************************************/
-auto parseTrustedJSONFile(uint vl = trustedSource)(in char[] fname)
-{ return parseTrustedJSONFile!vl(fname.representation); }
+Json!trustedSource.File parseTrustedJSONFile(in char[] fname)
+{ return parseTrustedJSONFile(fname.representation); }
 
 /// ditto
-auto parseTrustedJSONFile(uint vl = trustedSource)(in ubyte[] fname)
-{ return Json!vl.File(fname); }
+Json!trustedSource.File parseTrustedJSONFile(in ubyte[] fname)
+{ return Json!trustedSource.File(fname); }
 
 
 /*******************************************************************************
@@ -123,24 +123,12 @@ auto parseTrustedJSONFile(uint vl = trustedSource)(in ubyte[] fname)
  *   A `Json` struct.
  *
  **************************************/
-auto parseTrustedJSON(uint vl = trustedSource, T : const(char)[])(T text) nothrow
-{ return parseJSONTextImpl!vl(text); }
-
-
-private auto parseJSONTextImpl(uint vl, T : const(char)[])(T text)
-{
-	// We need to append 16 zero bytes for SSE to work, and if that reallocates the char[]
-	// we can declare it unique/immutable and don't need to allocate when returning JSON strings.
-	auto oldPtr = text.ptr;
-	text ~= "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-	static if (!is(T == string)) if (oldPtr !is text.ptr)
-		return Json!(vl, false)(assumeUnique(text));
-	return Json!(vl, false)(text);
-}
+auto parseTrustedJSON(T : const(char)[])(T text) nothrow
+{ return Json!(trustedSource, false)(text); }
 
 
 /*******************************************************************************
- * 
+ *
  * Validates a JSON text file.
  *
  * Params:
@@ -156,6 +144,21 @@ void validateJSONFile(in char[] fname)
 /// ditto
 void validateJSONFile(in ubyte[] fname)
 { Json!(validateAll, true).File(fname).skipValue(); }
+
+
+/*******************************************************************************
+ *
+ * Validates a JSON string.
+ *
+ * Params:
+ *   text = The string to load.
+ *
+ * Throws:
+ *   JSONException on validation errors.
+ *
+ **************************************/
+void validateJSON(T : const(char)[])(T text)
+{ Json!(validateAll, true)(text).skipValue(); }
 
 
 /// JSON data types returned by `peek`.
@@ -224,14 +227,16 @@ public:
 	 *
 	 * Params:
 	 *   text = The JSON text to parse.
+	 *   simdPrep = Set this to `No.simdPrep` to indicate that `text` is already
+	 *     suffixed by 16 zero bytes as required for SIMD processing.
 	 *
 	 **************************************/
 	nothrow
-	this(string text)
+	this(string text, Flag!"simdPrep" simdPrep = Yes.simdPrep)
 	{
 		import core.memory;
 		m_isString = GC.query(text.ptr) !is ReturnType!(GC.query).init;
-		this(cast(const char[]) text);
+		this(cast(const(char)[]) text, simdPrep);
 	}
 
 
@@ -243,11 +248,21 @@ public:
 	 *
 	 * Params:
 	 *   text = The JSON text to parse.
+	 *   simdPrep = Set this to `No.simdPrep` to indicate that `text` is already
+	 *     suffixed by 16 zero bytes as required for SIMD processing.
 	 *
 	 **************************************/
-	@nogc pure nothrow
-	this(const char[] text)
+	pure nothrow
+	this(const(char)[] text, Flag!"simdPrep" simdPrep = Yes.simdPrep)
 	{
+		if (simdPrep)
+		{
+			// We need to append 16 zero bytes for SSE to work, and if that reallocates the char[]
+			// we can declare it unique/immutable and don't need to allocate when returning JSON strings.
+			auto oldPtr = text.ptr;
+			text ~= "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+			m_isString |= oldPtr !is text.ptr;
+		}
 		m_start = m_text = text.ptr;
 		skipWhitespace!false();
 	}
@@ -1463,7 +1478,7 @@ public:
 				}
 
 				// Initialize the parser on the JSON text
-				m_json = (cast(char*) mapping)[0 .. cast(size_t) info.st_size];
+				m_json = Json((cast(char*) mapping)[0 .. cast(size_t) info.st_size], No.simdPrep);
 			}
 			else static assert(0, "Not implemented");
 		}
@@ -1574,7 +1589,7 @@ unittest
 
 	void passFile(string fname, Counter valid)
 	{
-		auto json = Json!validateAll.File(fname);
+		auto json = parseJSONFile!validateAll(fname);
 		Counter ctr;
 		valueHandler(json, ctr);
 		assert(ctr == valid, fname);
@@ -1582,7 +1597,7 @@ unittest
 
 	void failFile(string fname)
 	{
-		auto json = Json!validateAll.File(fname);
+		auto json = parseJSONFile!validateAll(fname);
 		Counter ctr;
 		assertThrown!JSONException(valueHandler(json, ctr), fname);
 	}
