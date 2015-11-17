@@ -376,7 +376,7 @@ public:
 				
 				// Anything else better be UTF-8
 				uint u = *cast(uint*) m_text;
-				static assert(endian == Endian.littleEndian, "Not implemented");
+				version (LittleEndian) u = bswap(u);
 				
 				// Filter overlong ASCII and missing follow byte.
 				if (
@@ -400,7 +400,7 @@ public:
 				else if (*m_text >= 0x80 && *m_text <= 0xBF)
 					expectNot("is a UTF-8 follow byte and cannot start a sequence");
 				else
-					expectNot("forms invalid UTF-8 sequence in string");
+					expectNot("is not a valid UTF-8 sequence start");
 			}
 		}
 		else
@@ -1699,4 +1699,13 @@ unittest
 			assert(t is null);
 		}
 	}
+}
+
+// Test case for Issue #5
+unittest
+{
+	import std.utf;
+	auto str = `{"a":"SΛNNO𐍈€한"}`;
+	str.validate;
+	validateJSON(str);
 }
