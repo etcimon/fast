@@ -27,26 +27,17 @@
  **************************************/
 module fast.json;
 
-import core.bitop;
-import core.simd;
-import core.stdc.stdlib;
 import core.stdc.string;
 
-version (GNU) import gcc.attribute;
-version (GNU) import gcc.builtins;
-version (LDC) import ldc.gccbuiltins_x86;
-
-import std.algorithm;
 import std.ascii;
 import std.conv;
-import std.datetime;
 import std.exception;
 import std.file;
 import std.json;
 import std.range;
-import std.stdio;
 import std.string;
 import std.traits;
+import std.typecons;
 import std.uni;
 
 import fast.buffer;
@@ -376,8 +367,8 @@ public:
 	{
 		static if (validate)
 		{
-			import std.system;
-			
+			import core.bitop;
+
 			while (true)
 			{
 				// Stop for control-characters, \, " and anything non-ASCII.
@@ -1356,6 +1347,7 @@ public:
 	{
 		private void printState()
 		{
+			import std.stdio;
 			writeln( ">", m_text[0 .. 16], "<" );
 			stdout.flush();
 		}

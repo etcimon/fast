@@ -482,7 +482,7 @@ static if (isAMD64 && (isLDC || isGDC))
 			b <<= exp;
 			exp -= bigDiv(a, b);
 			assert(a == 0xE8BA2E8BA2E8BA2AUL);
-			assert(exp == -1);
+			assert(exp == -2);
 		}
 	}
 }
