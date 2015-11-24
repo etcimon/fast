@@ -65,23 +65,31 @@ inout(char)* hexDecode4(ref inout(char)* hex, out uint result)
 {
 	foreach (i; 0 .. 4)
 	{
-		char ch = hex[i];
 		result *= 16;
-		if (ch >= '0' && ch <= '9')
+		char ch = cast(char) (hex[i] - '0');
+		if (ch <= 9)
 		{
-			result += ch - '0';
+			result += ch;
 		}
 		else
 		{
-			ch |= 0x20;
-			if (ch >= 'a' && ch <= 'f')
-				result += ch - 'a' + 10;
+			ch = cast(char) ((ch | 0x20) - 0x31);
+			if (ch <= 5)
+				result += ch + 10;
 			else
 				return hex + i;
 		}
 	}
 	hex += 4;
 	return null;
+}
+unittest
+{
+	string x = "aF09";
+	const(char)* p = x.ptr;
+	uint result;
+	hexDecode4(p, result);
+	assert(result == 0xAF09);
 }
 
 
