@@ -7,13 +7,17 @@ license "GPL-3.0"
 
 excludedSourceFiles "source/fast/doc.d"
 
+configuration "library" {
+	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
+	targetType "library"
+}
+
 configuration "benchmark" {
 	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "executable"
 	versions "benchmark"
 }
 
-configuration "library" {
-	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
-	targetType "library"
+configuration "unittest" {
+	targetType "executable"
 }
