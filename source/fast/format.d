@@ -225,8 +225,10 @@ enum formatStringArgCount(string format)()
 
 template format(string fmt)
 {
+	import std.exception;
+
 	enum argCnt = formatStringArgCount!fmt;
-	
+
 	enum codeGen()
 	{
 		string code = `pure nothrow string format(`;
@@ -244,13 +246,13 @@ template format(string fmt)
 		code ~= `, char[] buffer = new char[](spaceRequirements!(fmt`;
 		foreach (i; staticIota!(0, argCnt))
 		code ~= std.string.format(", A%s", i);
-		code ~= `))) { return std.exception.assumeUnique(formattedWrite!fmt(buffer.ptr`;
+		code ~= `))) { return assumeUnique(formattedWrite!fmt(buffer.ptr`;
 		foreach (i; staticIota!(0, argCnt))
 		code ~= std.string.format(", a%s", i);
 		code ~= `)); }`;
 		return code;
 	}
-	
+
 	mixin(codeGen());
 }
 

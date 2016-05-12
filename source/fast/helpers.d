@@ -77,6 +77,37 @@ static if (__VERSION__ < 2067)
 }
 
 
+// 2.071 fixed visibility rules, so we need to roll our own staticIota.
+static if (__VERSION__ < 2071)
+{
+	import std.typecons : staticIota;
+}
+else
+{
+	import std.typecons : AliasSeq;
+
+	template staticIota(int beg, int end)
+	{
+		static if (beg + 1 >= end)
+		{
+			static if (beg >= end)
+			{
+				alias staticIota = AliasSeq!();
+			}
+			else
+			{
+				alias staticIota = AliasSeq!(+beg);
+			}
+		}
+		else
+		{
+			enum mid = beg + (end - beg) / 2;
+			alias staticIota = AliasSeq!(staticIota!(beg, mid), staticIota!(mid, end));
+		}
+	}
+}
+
+
 /**
  * For any integral type, returns the unsigned type of the same bit-width.
  */
@@ -96,24 +127,23 @@ template UnsignedOf(I) if (isIntegral!I)
 }
 
 
-version (DigitalMars)
-{
-	enum noinline;
-	enum forceinline;
-	enum sse4;
-}
-else version (GNU)
+/// Helper mixins to force enable/diasble inlining via pragma on recent compilers.
+enum inlineTrue = "static if (__VERSION__ > 2_067) pragma(inline, true);";
+/// ditto
+enum inlineFalse = "static if (__VERSION__ > 2_067) pragma(inline, false);";
+
+
+version (GNU)
 {
 	import gcc.attribute;
 	enum noinline    = gcc.attribute.attribute("noinline");
 	enum forceinline = gcc.attribute.attribute("forceinline");
 	enum sse4        = gcc.attribute.attribute("target", "sse4");
 }
-else version (LDC)
+else
 {
-	import ldc.attribute;
-	enum noinline    = ldc.attribute.attribute("noinline");
-	enum forceinline = ldc.attribute.attribute("alwaysinline");
+	enum noinline;
+	enum forceinline;
 	enum sse4;
 }
 
@@ -191,9 +221,10 @@ enum getUDA(alias sym, T)()
  **************************************/
 version (DigitalMars)
 {
-	pragma(inline, true) @safe @nogc pure nothrow
+	@safe @nogc pure nothrow
 	ubyte clz(U)(U u) if (is(U == uint) || is(U == ulong))
 	{
+		mixin(inlineTrue);
 		import core.bitop;
 		enum max = 8 * U.sizeof - 1;
 		static if (isX86 && is(U == ulong))

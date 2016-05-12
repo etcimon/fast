@@ -32,52 +32,54 @@ void main()
 	static immutable zeroterm = "wefwfnqwefnw(eknwoemkf)moorroijqwoijq&oqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwefnw(eknwoemkf)moorroijqwoihqioqo(vqwojkpjavnal(nvo(eirvn$wefwfnqwef\"w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0";
 	static pathSepRegex = ctRegex!`[/\\]`;
 	enum pathnameWStringLength = to!(immutable(wchar_t)[])(pathname).length;
-		run ("Format strings for integers...", 13093,
-			benchmark ("std.*.format", () { uint check; foreach (ulong num; nums) { string str = format("decimal: %s, hex: %x", num, num); check += str[9]; } return check; } ),
-			benchmark ("fast.*.format", () { uint check; foreach (ulong num; nums) { string str = format!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
-			benchmark ("fast.*.formata", () { uint check; foreach (ulong num; nums) { char[] str = formata!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
-			);
 
-		run ("Convert 256 numbers to fixed width hex strings...", 0x20,
-			benchmark ("std.*.formattedWrite", () { Appender!(char[]) app; app.reserve(16); char check = 0; foreach (ulong num; nums) { app.formattedWrite("%016X", num); check += app.data[0]; app.clear(); } return check; }),
-			benchmark ("fast.*.hexStrUpper", () { char[16] str; char check = 0; foreach (ulong num; nums) { str = hexStrUpper(num); check += str[0]; } return check; }),
-			);
+	jsonCoordinates!true();
+	jsonCoordinates!false();
 
-		run ("Concatenate a known number of strings...", part1.length + part2.length + part3.length,
-			benchmark ("std.array.appender", () { auto app = appender(part1); app ~= part2; app ~= part3; return app.data.length; }),
-			benchmark ("~", () { string path = part1 ~ part2 ~ part3; return path.length; }),
-			benchmark ("fast.string.concat", () { size_t length; { auto path = concat!(part1, part2, part3); length = path.length; } return length; }),
-			);
+	run ("Format strings for integers...", 13093,
+		benchmark ("std.*.format", () { uint check; foreach (ulong num; nums) { string str = format("decimal: %s, hex: %x", num, num); check += str[9]; } return check; } ),
+		benchmark ("fast.*.format", () { uint check; foreach (ulong num; nums) { string str = format!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
+		benchmark ("fast.*.formata", () { uint check; foreach (ulong num; nums) { char[] str = formata!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
+		);
 
-		run ("Allocate a temporary char buffer and fill it with 0xFF...", '\xFF',
-		     benchmark ("new", () { auto str = new char[](zeroterm.length); return str[$-1]; }),
-		     benchmark ("malloc", () { auto ptr = cast(char*) malloc(zeroterm.length); scope(exit) free(ptr); memset(ptr, 0xFF, zeroterm.length); return ptr[zeroterm.length-1]; }),
-		     benchmark ("fast.buffer.tempBuffer", () { char result; { auto buf = tempBuffer!(char, zeroterm.length); memset(buf, 0xFF, zeroterm.length); result = buf[$-1]; } return result; }),
-			);
+	run ("Convert 256 numbers to fixed width hex strings...", 0x20,
+		benchmark ("std.*.formattedWrite", () { Appender!(char[]) app; app.reserve(16); char check = 0; foreach (ulong num; nums) { app.formattedWrite("%016X", num); check += app.data[0]; app.clear(); } return check; }),
+		benchmark ("fast.*.hexStrUpper", () { char[16] str; char check = 0; foreach (ulong num; nums) { str = hexStrUpper(num); check += str[0]; } return check; }),
+		);
 
-		run("Convert a string to a wchar*...", wchar('\0'),
-		    benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
-			benchmark ("cstring.wcharPtr", () { wchar result; { auto buf = wcharPtr!pathname; result = buf.ptr[pathnameWStringLength]; } return result; }),
-			);
+	run ("Concatenate a known number of strings...", part1.length + part2.length + part3.length,
+		benchmark ("std.array.appender", () { auto app = appender(part1); app ~= part2; app ~= part3; return app.data.length; }),
+		benchmark ("~", () { string path = part1 ~ part2 ~ part3; return path.length; }),
+		benchmark ("fast.string.concat", () { size_t length; { auto path = concat!(part1, part2, part3); length = path.length; } return length; }),
+		);
 
-		run("Convert a string to a char*...", '\0',
-		    benchmark ("toUTFz", () { return toUTFz!(char*)(pathname)[pathname.length]; }),
-		    benchmark ("toStringz", () { return cast(char) toStringz(pathname)[pathname.length]; }),
-		    benchmark ("cstring.charPtr", () { return cast(char) charPtr!pathname[pathname.length]; }),
-			);
+	run ("Allocate a temporary char buffer and fill it with 0xFF...", '\xFF',
+		benchmark ("new", () { auto str = new char[](zeroterm.length); return str[$-1]; }),
+		benchmark ("malloc", () { auto ptr = cast(char*) malloc(zeroterm.length); scope(exit) free(ptr); memset(ptr, 0xFF, zeroterm.length); return ptr[zeroterm.length-1]; }),
+		benchmark ("fast.buffer.tempBuffer", () { char result; { auto buf = tempBuffer!(char, zeroterm.length); memset(buf, 0xFF, zeroterm.length); result = buf[$-1]; } return result; }),
+		);
 
-		run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
-		     benchmark (`while+if with 4 cond.`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
-		     benchmark ("fast.string.split", () { string before, after = zeroterm; while (fast.string.split!`or(or(=<,=>),or(=&,="))`(after, before, after)) {} return before; }),
-			);
+	run("Convert a string to a wchar*...", wchar('\0'),
+		benchmark ("toUTFz", () { return toUTFz!(wchar*)(pathname)[pathnameWStringLength]; }),
+		benchmark ("cstring.wcharPtr", () { wchar result; { auto buf = wcharPtr!pathname; result = buf.ptr[pathnameWStringLength]; } return result; }),
+		);
 
-		run ("Split a path by '/' or '\\'...", "slashes",
-		     benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
-		     benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
-		     benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!`or(=\,=/)`(after, before, after)) {} return before; }),
-			);
+	run("Convert a string to a char*...", '\0',
+		benchmark ("toUTFz", () { return toUTFz!(char*)(pathname)[pathname.length]; }),
+		benchmark ("toStringz", () { return cast(char) toStringz(pathname)[pathname.length]; }),
+		benchmark ("cstring.charPtr", () { return cast(char) charPtr!pathname[pathname.length]; }),
+		);
 
-	jsonCoordinates();
+	run ("Split a string at each occurance of <, >, & and \"...", "w(eknwoemkf)moorroijqwoijqioqo(vqwojkpjavnal(nvo(eirvn$\0",
+		benchmark (`while+if with 4 cond.`, () { string before; immutable(char*) stop = zeroterm.ptr + zeroterm.length; immutable(char)* iter = zeroterm.ptr; immutable(char)* done = zeroterm.ptr; if (iter !is stop) do { char c = *iter++; if (c == '<' || c == '>' || c == '&' || c == '"') { before = done[0 .. iter - done]; done = iter; }} while (iter !is stop); return done[0 .. stop - done]; }),
+		benchmark ("fast.string.split", () { string before, after = zeroterm; while (fast.string.split!`or(or(=<,=>),or(=&,="))`(after, before, after)) {} return before; }),
+		);
+
+	run ("Split a path by '/' or '\\'...", "slashes",
+		benchmark ("std.regex.split", () { return split(pathname, pathSepRegex)[$-1]; }),
+		benchmark ("std.regex.splitter", () { string last; auto range = splitter(pathname, pathSepRegex); while (!range.empty) { last = range.front; range.popFront(); } return last; }),
+		benchmark ("fast.string.split", () { string before, after = pathname; while (fast.string.split!`or(=\,=/)`(after, before, after)) {} return before; }),
+		);
 
 	writeln("Benchmark done!");
 }
@@ -86,7 +88,7 @@ void main()
 
 private:
 
-void jsonCoordinates()
+void jsonCoordinates(bool integral)()
 {
 	// A variant of https://github.com/kostya/benchmarks with less coordinate tuples,
 	// since we repeat the test runs until a time span of one second passed.
@@ -104,81 +106,127 @@ void jsonCoordinates()
 	__gshared string text = "{\n  \"coordinates\": [\n";
 	foreach (i; 0 .. coordCount)
 	{
-		text ~= format("    {\n      \"x\": %.17g,\n      \"y\": %.17g,\n      \"z\": %.17g,\n" ~
-			"      \"name\": \"%s %s\",\n      \"opts\": {\n        \"1\": [\n          1,\n          true\n" ~
-			"        ]\n      }\n    }", uniform(0.0, 1.0, rng), uniform(0.0, 1.0, rng), uniform(0.0, 1.0, rng),
-			iota(5).map!(_ => lowercase[uniform(0, $, rng)]), uniform(0, 10000, rng));
+		static if (integral)
+		{
+			text ~= format("    {\n      \"x\": %s,\n      \"y\": %s,\n      \"z\": %s,\n" ~
+				"      \"name\": \"%s %s\",\n      \"opts\": {\n        \"1\": [\n          1,\n          true\n" ~
+				"        ]\n      }\n    }", uniform(0, 10_000, rng), uniform(0, 10_000, rng), uniform(0, 10_000, rng),
+				iota(5).map!(_ => lowercase[uniform(0, $, rng)]), uniform(0, 10000, rng));
+		}
+		else
+		{
+			text ~= format("    {\n      \"x\": %.17g,\n      \"y\": %.17g,\n      \"z\": %.17g,\n" ~
+				"      \"name\": \"%s %s\",\n      \"opts\": {\n        \"1\": [\n          1,\n          true\n" ~
+				"        ]\n      }\n    }", uniform(0.0, 1.0, rng), uniform(0.0, 1.0, rng), uniform(0.0, 1.0, rng),
+				iota(5).map!(_ => lowercase[uniform(0, $, rng)]), uniform(0, 10000, rng));
+		}
 		text ~= (i == coordCount - 1) ? "\n" : ",\n";
 	}
 	text ~= "  ],\n  \"info\": \"some info\"\n}\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 	text = text[0 .. $-16];
-	
+
 	GC.collect();
 
 	// Dlang on x86 with optimizations rounds up double additions.
-	static if (!isX86 || !isRelease)
+	static if (integral)
+	{
+		version (X86)
+			enum expect = tuple(4986L, 4997L, 4988L);
+		else
+			enum expect = tuple(5003L, 4979L, 4971L);
+	}
+	else static if (!isX86 || !isRelease)
 		enum expect = tuple(0.49683911677479053, 0.50166077554665356, 0.49647639699603635);
 	else static if (isDMD)
 		enum expect = tuple(0.49823454184171062, 0.50283215330485886, 0.49828840592673407);
 	else
 		enum expect = tuple(0.49823454184104704, 0.50283215330409059, 0.49828840592580270);
 
-	run!(1, coordCount)("JSON 3D coordinates", expect,
+	run!(1, coordCount)("JSON 3D coordinates (" ~ (integral ? "integers" : "floating-point") ~ ")", expect,
 		benchmark("std.json", {
 				import std.json;
 				
 				auto json = parseJSON(text);
 				auto coordinates = json["coordinates"].array;
 				size_t len = coordinates.length;
-				double x = 0, y = 0, z = 0;
+				static if (integral)
+					long x, y, z;
+				else
+					double x = 0, y = 0, z = 0;
 				foreach (i; 0 .. len)
 				{
 					auto coord = coordinates[i];
-					x += coord["x"].floating;
-					y += coord["y"].floating;
-					z += coord["z"].floating;
+					static if (integral)
+					{
+						x += coord["x"].integer;
+						y += coord["y"].integer;
+						z += coord["z"].integer;
+					}
+					else
+					{
+						x += coord["x"].floating;
+						y += coord["y"].floating;
+						z += coord["z"].floating;
+					}
 				}
 
-				return tuple(x / len, y / len, z / len);
+				return tuple(x / long(len), y / long(len), z / long(len));
 			}),
-//			benchmark("stdx.data.json", {
-//					import stdx.data.json.lexer;
-//					import stdx.data.json.parser;
+//		benchmark("stdx.data.json", {
+//				import stdx.data.json.lexer;
+//				import stdx.data.json.parser;
 //
-//					auto json = parseJSONStream!(LexOptions.useBigInt)(text);
-//					json.skipToKey("coordinates");
-//					size_t len;
-//					double x = 0, y = 0, z = 0;
-//					json.readArray(delegate() @trusted {
-//							json.readObject!(typeof(json))(delegate(string key) @trusted {
-//									if (key == "x")
-//										x += json.readDouble();
-//									else if (key == "y")
-//										y += json.readDouble();
-//									else if (key == "z")
-//										z += json.readDouble();
-//									else
-//										json.skipValue();
-//								});
-//							len++;
-//						});
+//				auto json = parseJSONStream!(LexOptions.useBigInt)(text);
+//				json.skipToKey("coordinates");
+//				size_t len;
+//				double x = 0, y = 0, z = 0;
+//				json.readArray(delegate() @trusted {
+//						json.readObject!(typeof(json))(delegate(string key) @trusted {
+//							if (key == "x")
+//									x += json.readDouble();
+//								else if (key == "y")
+//									y += json.readDouble();
+//								else if (key == "z")
+//									z += json.readDouble();
+//								else
+//									json.skipValue();
+//							});
+//						len++;
+//					});
 //
-//					return tuple(x / len, y / len, z / len);
-//				}),
+//				return tuple(x / len, y / len, z / len);
+//			}),
 		benchmark("fast.json", {
 				import fast.json;
 
 				auto json = Json!(validateAll, true)(text);
-				size_t len;
-				double x = 0, y = 0, z = 0;
-				foreach (i; json.coordinates)
+				long len;
+
+				static if (integral)
 				{
-					json.keySwitch!("x", "y", "z")(
-						{ x += json.read!double; },
-						{ y += json.read!double; },
-						{ z += json.read!double; }
-					);
-					len++;
+					long x, y, z;
+					foreach (i; json.coordinates)
+					{
+						json.keySwitch!("x", "y", "z")(
+							{ x += json.read!long; },
+							{ y += json.read!long; },
+							{ z += json.read!long; }
+							);
+						len++;
+					}
+				}
+				else
+				{
+					double x = 0, y = 0, z = 0;
+					foreach (i; json.coordinates)
+					{
+						json.keySwitch!("x", "y", "z")(
+							{ x += json.read!double; },
+							{ y += json.read!double; },
+							{ z += json.read!double; }
+						);
+						len++;
+					}
 				}
 
 				return tuple(x / len, y / len, z / len);
