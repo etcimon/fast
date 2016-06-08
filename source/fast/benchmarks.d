@@ -135,12 +135,12 @@ void jsonCoordinates(bool integral)()
 		else
 			enum expect = tuple(5003L, 4979L, 4971L);
 	}
+	else static if (isDMD && isX86 && !isRelease || isGDC && isX86)
+		enum expect = tuple(0.49823454184104704, 0.50283215330409059, 0.49828840592580270);
 	else static if (!isX86 || !isRelease)
 		enum expect = tuple(0.49683911677479053, 0.50166077554665356, 0.49647639699603635);
-	else static if (isDMD)
-		enum expect = tuple(0.49823454184171062, 0.50283215330485886, 0.49828840592673407);
 	else
-		enum expect = tuple(0.49823454184104704, 0.50283215330409059, 0.49828840592580270);
+		enum expect = tuple(0.49823454184171062, 0.50283215330485886, 0.49828840592673407);
 
 	run!(1, coordCount)("JSON 3D coordinates (" ~ (integral ? "integers" : "floating-point") ~ ")", expect,
 		benchmark("std.json", {

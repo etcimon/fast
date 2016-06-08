@@ -12,12 +12,20 @@ configuration "library" {
 	targetType "library"
 }
 
+configuration "shared-library" {
+	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
+	targetType "dynamicLibrary"
+}
+
 configuration "benchmark" {
 	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "executable"
 	versions "benchmark"
 }
 
-configuration "unittest" {
+configuration "benchmark-pic" {
+	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "executable"
+	versions "benchmark"
+	dflags "-fPIC"
 }

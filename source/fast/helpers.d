@@ -50,6 +50,10 @@ version (LDC) {
 	enum isDMD = true;
 }
 
+version (D_PIC)
+	enum isPIC = true;
+else
+	enum isPIC = false;
 
 static if (__VERSION__ < 2067)
 {
@@ -343,12 +347,17 @@ pure nothrow @nogc
 
 		static if (!isDMD)
 			immutable ubyte16 SIMDFromString = data;
+		else version (D_PIC)
+		{
+			import std.format;
+			void SIMDFromString() @safe @nogc pure nothrow
+			{
+				mixin(format("asm @trusted @nogc pure nothrow { naked; db %(%s,%); }", data));
+			}
+		}
 		else static if (isX86)
-			align(16) static __gshared ubyte[16] SIMDFromString = data;
+			align(16) __gshared ubyte[16] SIMDFromString = data;
 		else
-			static __gshared ubyte16 SIMDFromString = data;
+			__gshared ubyte16 SIMDFromString = data;
 	}
-
-
-	version (unittest) void main() {}
 }

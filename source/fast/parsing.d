@@ -802,7 +802,24 @@ private void vpcmpistri(C, immutable(C[]) cs, Operation op, Polarity pol = Polar
 		{
 			version (Posix)
 			{
-				asm @nogc pure nothrow
+				version (D_PIC) asm @nogc pure nothrow
+				{
+					naked;
+					lea         RAX, csXMM;
+					mov         RAX, [RAX];
+					movdqu      XMM0, [RAX];
+					mov         RAX, [RDI];
+				L1:
+					vpcmpistri  XMM0, [RAX], mode;
+					add         RAX, 16;
+					cmp         ECX, 16;
+					je          L1;
+					sub         RAX, 16;
+					add         RAX, RCX;
+					mov         [RDI], RAX;
+					ret;
+				}
+				else asm @nogc pure nothrow
 				{
 					naked;
 					movdqa      XMM0, csXMM;
@@ -824,7 +841,23 @@ private void vpcmpistri(C, immutable(C[]) cs, Operation op, Polarity pol = Polar
 		{
 			version (Posix)
 			{
-				asm @nogc pure nothrow
+				version (D_PIC) asm @nogc pure nothrow
+				{
+					naked;
+					mov         EDX, CS:csXMM[EBX];
+					movdqu      XMM0, [EDX];
+					mov         EDX, [EAX];
+				L1:
+					vpcmpistri  XMM0, [EDX], mode;
+					add         EDX, 16;
+					cmp         ECX, 16;
+					je          L1;
+					sub         EDX, 16;
+					add         EDX, ECX;
+					mov         [EAX], EDX;
+					ret;
+				}
+				else asm @nogc pure nothrow
 				{
 					naked;
 					movdqa      XMM0, csXMM;
