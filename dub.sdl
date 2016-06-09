@@ -10,11 +10,13 @@ excludedSourceFiles "source/fast/doc.d"
 configuration "library" {
 	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "library"
+	versions "GdcLibrary" platform="gdc"
 }
 
 configuration "shared-library" {
 	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "dynamicLibrary"
+	versions "GdcLibrary" platform="gdc"
 }
 
 configuration "benchmark" {

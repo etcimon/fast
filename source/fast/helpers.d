@@ -141,7 +141,11 @@ version (GNU)
 {
 	import gcc.attribute;
 	enum noinline    = gcc.attribute.attribute("noinline");
-	enum forceinline = gcc.attribute.attribute("forceinline");
+	// GDC stops compilation when instructed to inline a function from an imported module.
+	version (GdcLibrary)
+		enum forceinline;
+	else
+		enum forceinline = gcc.attribute.attribute("forceinline");
 	enum sse4        = gcc.attribute.attribute("target", "sse4");
 }
 else
