@@ -167,7 +167,7 @@ struct TempBuffer(T)
 	@property size_t size() @safe pure nothrow { return T.sizeof * this.slice.length; }
 	@property size_t length() @safe pure nothrow { return this.slice.length; }
 	alias opDollar = length;
-	@property T* ptr() @safe pure nothrow { return this.slice.ptr; }
+	@property T* ptr() @safe pure nothrow { return &this.slice[0]; }
 	alias ptr this;
 
 	auto makeOutputRange()
