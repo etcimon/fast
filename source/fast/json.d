@@ -35,7 +35,7 @@ import std.exception;
 import std.file;
 import std.json;
 import std.range;
-import std.string;
+import std.string : representation, format;
 import std.traits;
 import std.typecons;
 import std.uni;
