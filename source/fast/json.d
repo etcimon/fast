@@ -430,7 +430,7 @@ public:
 			auto key4 = cast(char[4]*) key;
 			char[4] buf = *key4;
 			uint bytes = decodeEscape(buf.ptr);
-			if (buf !is *key4)
+			if (buf != *key4)
 				return false;
 			key += bytes;
 		}
