@@ -2,10 +2,10 @@ name "fast"
 description "A library that aims to provide the fastest possible implementation of some every day routines."
 homepage "http://github.com/mleise/fast"
 authors "Marco Leise"
-copyright "Copyright © 2015, Marco Leise"
+copyright "Copyright © 2017, Marco Leise"
 license "GPL-3.0"
 
-excludedSourceFiles "source/fast/doc.d"
+excludedSourceFiles "source/docs/*.d" "source/unicode/*.d"
 targetPath "generated"
 
 configuration "library" {

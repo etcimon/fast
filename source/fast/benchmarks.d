@@ -33,6 +33,8 @@ void main()
 	static pathSepRegex = ctRegex!`[/\\]`;
 	enum pathnameWStringLength = to!(immutable(wchar_t)[])(pathname).length;
 
+	unicode();
+
 	jsonCoordinates!true();
 	jsonCoordinates!false();
 
@@ -87,6 +89,51 @@ void main()
 
 
 private:
+
+void unicode()
+{
+	import std.range, std.uni, std.string, std.meta;
+	import fast.unicode;
+
+	static immutable string devanagari = cast(string)"तदपि कही गुर बारंिह बारा। समुझि परी कछु मति अनुसारा।।
+भाषाबद्ध करबि मैं सोई। मोरें मन प्रबोध जेंिह होई।।
+जस कछु बुधि बिबेक बल मेरें। तस कहिहउँ हियँ हरि के प्रेरें।।
+निज संदेह मोह भ्रम हरनी। करउँ कथा भव सरिता तरनी।।
+बुध बिश्राम सकल जन रंजनि। रामकथा कलि कलुष बिभंजनि।।
+रामकथा कलि पंनग भरनी। पुनि बिबेक पावक कहुँ अरनी।।
+रामकथा कलि कामद गाई। सुजन सजीवनि मूरि सुहाई।।
+सोइ बसुधातल सुधा तरंगिनि। भय भंजनि भ्रम भेक भुअंगिनि।।
+असुर सेन सम नरक निकंदिनि। साधु बिबुध कुल हित गिरिनंदिनि।।
+संत समाज पयोधि रमा सी। बिस्व भार भर अचल छमा सी।।
+जम गन मुहँ मसि जग जमुना सी। जीवन मुकुति हेतु जनु कासी।।
+रामहि प्रिय पावनि तुलसी सी। तुलसिदास हित हियँ हुलसी सी।।
+सिवप्रय मेकल सैल सुता सी। सकल सिद्धि सुख संपति रासी।।
+सदगुन सुरगन अंब अदिति सी। रघुबर भगति प्रेम परमिति सी।।
+".representation.repeat(10).join.array();
+	static immutable string latin = "A gory knife had been found close to the murdered man, and it had been
+recognized by somebody as belonging to Muff Potter--so the story ran.
+And it was said that a belated citizen had come upon Potter washing
+himself in the \"branch\" about one or two o'clock in the morning, and
+that Potter had at once sneaked off--suspicious circumstances,
+especially the washing which was not a habit with Potter. It was also
+said that the town had been ransacked for this \"murderer\" (the public
+are not slow in the matter of sifting evidence and arriving at a
+verdict), but that he could not be found. Horsemen had departed down
+all the roads in every direction, and the Sheriff \"was confident\" that
+he would be captured before night.
+".repeat(10).join.array();
+
+	void benchCountGraphemes(alias text)(size_t count)
+	{
+		run ("Count graphemes in " ~ text.stringof ~ " text...", count,
+			benchmark ("byGrapheme.walkLength", () { return text.byGrapheme.walkLength(); }),
+			benchmark ("fast.graphemeCount", () { return text.countGraphemes(); }),
+			);
+	}
+	benchCountGraphemes!devanagari(5430);
+	benchCountGraphemes!latin(7210);
+}
+
 
 void jsonCoordinates(bool integral)()
 {
