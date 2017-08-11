@@ -6,6 +6,7 @@ copyright "Copyright © 2015, Marco Leise"
 license "GPL-3.0"
 
 excludedSourceFiles "source/fast/doc.d"
+targetPath "generated"
 
 configuration "library" {
 	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
