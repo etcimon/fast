@@ -6,7 +6,7 @@
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * Copyright:
- *   © 2015 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
+ *   © 2017 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
@@ -15,7 +15,7 @@
 module fast.parsing;
 
 import std.traits;
-import fast.helpers;
+import fast.internal.helpers;
 
 
 /+
@@ -131,7 +131,6 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 {
 	import core.bitop;
 	import std.range;
-	import fast.helpers;
 
 	// Integer types larger than the mantissa of N.
 	static if (N.sizeof <= size_t.sizeof)

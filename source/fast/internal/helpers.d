@@ -6,13 +6,13 @@
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * Copyright:
- *   © 2015 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
+ *   © 2017 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
  * 
  **************************************/
-module fast.helpers;
+module fast.internal.helpers;
 
 import std.traits;
 
@@ -185,7 +185,7 @@ enum ctfeJoin(size_t length)(in string fmt, in string joiner = null)
 	import std.range : iota;
 	import std.string : format;
 	import std.algorithm : map;
-	
+
 	// BUG: Cannot use, join(), as it "cannot access the nested function 'ctfeJoin'".
 	string result;
 	foreach (inst; map!(i => format(fmt, i))(iota(length))) {

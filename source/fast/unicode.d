@@ -255,7 +255,7 @@ out
 body
 {
 	version (LDC) pragma(inline, true);
-	import fast.helpers;
+	import fast.internal.helpers;
 
 	alias Enum = Property.Enum;
 	alias CPI = CodePointInfo!Enum;

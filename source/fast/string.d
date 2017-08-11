@@ -5,7 +5,7 @@
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  *
  * Copyright:
- *   © 2013 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
+ *   © 2017 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  *
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
@@ -359,7 +359,7 @@ nothrow @nogc
 template concat(Strs...)
 {
 	import core.stdc.string : memcpy;
-	import fast.helpers;
+	import fast.internal.helpers;
 
 	enum allocExpr = ctfeJoin!(Strs.length)("Strs[%s].length", "+") ~ "+1";
 
@@ -388,7 +388,7 @@ private:
 
 template SimdMatcher(string match)
 {
-	import core.simd, std.string, fast.helpers;
+	import core.simd, std.string, fast.internal.helpers;
 	
 	static if (match != strip(match)) {
 		// Reinstanciate the template with any whitespace stripped from the match string.

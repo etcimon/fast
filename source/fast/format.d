@@ -6,7 +6,7 @@
  *   $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * Copyright:
- *   © 2015 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
+ *   © 2017 $(LINK2 mailto:Marco.Leise@gmx.de, Marco Leise)
  * 
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
@@ -14,14 +14,14 @@
  **************************************/
 module fast.format;
 
-import fast.helpers;
+import core.stdc.stdlib;
+import core.stdc.string;
+import core.bitop;
 import std.string;
 import std.traits;
 import std.typecons;
 import std.typetuple;
-import core.stdc.stdlib;
-import core.stdc.string;
-import core.bitop;
+import fast.internal.helpers;
 
 
 /+
