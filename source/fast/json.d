@@ -920,7 +920,7 @@ public:
 
 	/*******************************************************************************
 	 * 
-	 * Iterate the keys of an JSON object with `foreach`.
+	 * Iterate the keys of a JSON object with `foreach`.
 	 * 
 	 * Notes:
 	 *   $(UL
@@ -1306,21 +1306,21 @@ public:
 		@noinline
 		private void handleError(string msg)
 		{
+			import fast.unicode;
+
 			size_t line;
-			const(char)* p = m_start;
-			const(char)* last;
-			do
+			const(char)* p    = m_start;
+			const(char)* last = m_start;
+			while (p < m_text)
 			{
 				last = p;
 				p.skipToNextLine();
 				line++;
 			}
-			while (p <= m_text);
+			line += p is m_text;
+			size_t column = last[0 .. m_text - last].countGraphemes() + 1;
 			
-			size_t pos;
-			pos += last[0 .. m_text - last].byGrapheme.walkLength;
-			
-			throw new JSONException(msg, line.to!int, pos.to!int);
+			throw new JSONException(msg, line.to!int, column.to!int);
 		}
 	}
 
@@ -1340,17 +1340,6 @@ public:
 			m_text.skipAllOf!"\t\n\r ,:";
 		else
 			m_text.skipAsciiWhitespace();
-	}
-
-
-	debug
-	{
-		private void printState()
-		{
-			import std.stdio;
-			writeln( ">", m_text[0 .. 16], "<" );
-			stdout.flush();
-		}
 	}
 
 

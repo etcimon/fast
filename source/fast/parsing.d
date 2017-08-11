@@ -513,7 +513,8 @@ static if (isAMD64 && (isLDC || isGDC))
  *   terminators = A list of code units that terminate the string.
  *   special = A list of code units that are handled by the user callback. Use
  *             this for escape string handling. Default is `null`.
- *   p_str = Pointer to the string for the comparison.
+ *   p_str = Pointer to the string for the comparison. After the function call
+ *           it will be behind the last matching character.
  *   callback = User callback to handle special escape characters if `special`
  *              is non-empty.
  *
@@ -657,8 +658,8 @@ void skipAllOf(string cs)(ref const(char)* p)
 
 /*******************************************************************************
  * 
- * Skips the read pointer over ASCII white-space including comprising '\t',
- * '\r', '\n' and ' '.
+ * Skips the read pointer over ASCII white-space comprising '\t', '\r', '\n' and
+ * ' '.
  *
  * Params:
  *   p = the read pointer
@@ -686,10 +687,10 @@ void skipAsciiWhitespace(ref const(char)* p)
 @forceinline @nogc nothrow pure
 void skipToNextLine(ref const(char)* p)
 {
-	p.vpcmpistri!(char, "\r\n", Operation.equalAnyElem);
-	if (p[0] == '\r' && p[1] == '\n')
-		p++;
-	p++;
+	// Stop at next \r, \n or \0.
+	p.vpcmpistri!(char, "\x01\x09\x0B\x0C\x0E\xFF", Operation.inRanges, Polarity.negate);
+	if (p[0] == '\r') p++;
+	if (p[0] == '\n') p++;
 }
 
 
