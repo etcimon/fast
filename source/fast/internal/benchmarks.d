@@ -40,7 +40,7 @@ void main()
 
 	run ("Format strings for integers...", 13093,
 		benchmark ("std.*.format", () { uint check; foreach (ulong num; nums) { string str = format("decimal: %s, hex: %x", num, num); check += str[9]; } return check; } ),
-		benchmark ("fast.*.format", () { uint check; foreach (ulong num; nums) { string str = format!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
+		benchmark ("fast.*.format", () { uint check; foreach (ulong num; nums) { string str = fast.format.format!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
 		benchmark ("fast.*.formata", () { uint check; foreach (ulong num; nums) { char[] str = formata!"decimal: %s, hex: %x"(num, num); check += str[9]; } return check; } ),
 		);
 
