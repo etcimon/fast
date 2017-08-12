@@ -36,7 +36,6 @@ import std.json;
 import std.range;
 import std.string : representation, format;
 import std.traits;
-import std.typecons;
 import std.uni;
 
 import fast.buffer;
@@ -58,10 +57,10 @@ import fast.parsing;
  *
  **************************************/
 auto parseJSONFile(uint vl = validateUsed)(in char[] fname)
-{ return parseJSONFile!vl(fname.representation); }
+{ return Json!vl.File(fname); }
 
 /// ditto
-auto parseJSONFile(uint vl = validateUsed)(in ubyte[] fname)
+auto parseJSONFile(uint vl = validateUsed)(in Filename fname)
 { return Json!vl.File(fname); }
 
 
@@ -94,10 +93,10 @@ auto parseJSON(uint vl = validateUsed, T : const(char)[])(T text) nothrow
  *
  **************************************/
 Json!trustedSource.File parseTrustedJSONFile(in char[] fname)
-{ return parseTrustedJSONFile(fname.representation); }
+{ return Json!trustedSource.File(fname); }
 
 /// ditto
-Json!trustedSource.File parseTrustedJSONFile(in ubyte[] fname)
+Json!trustedSource.File parseTrustedJSONFile(in Filename fname)
 { return Json!trustedSource.File(fname); }
 
 
@@ -129,10 +128,10 @@ auto parseTrustedJSON(T : const(char)[])(T text) nothrow
  *
  **************************************/
 void validateJSONFile(in char[] fname)
-{ validateJSONFile(fname.representation); }
+{ Json!(validateAll, true).File(fname).skipValue(); }
 
 /// ditto
-void validateJSONFile(in ubyte[] fname)
+void validateJSONFile(in Filename fname)
 { Json!(validateAll, true).File(fname).skipValue(); }
 
 
@@ -1400,13 +1399,14 @@ public:
 	{
 		alias m_json this;
 		
-		private size_t m_len;
 		Json m_json;
+		private size_t m_len;
+		private bool m_isMapping;
 		
 		@disable this();
 		@disable this(this);
 		
-		this(const(ubyte)[] fname)
+		this(const Filename fname)
 		{
 			version (Posix)
 			{
@@ -1414,7 +1414,7 @@ public:
 				import core.sys.posix.sys.mman;
 				import core.sys.posix.unistd;
 
-				version (linux)
+				version (CRuntime_Glibc)
 					enum O_CLOEXEC = octal!2000000;
 				else version (OSX)  // Requires at least OS X 10.7 Lion
 					enum O_CLOEXEC = 0x1000000;
@@ -1439,7 +1439,7 @@ public:
 				if (zeroPage)
 					fsize += pagesize;
 				if (fsize > size_t.max)
-					throw new FileException("JSON file too large to be mapped in RAM.");
+					throw new Exception("JSON file too large to be mapped in RAM.");
 				m_len = cast(size_t) fsize;
 				
 				// Map the file
@@ -1448,7 +1448,7 @@ public:
 					throw new ErrnoException("Could not map JSON file.");
 				scope(failure)
 					munmap(mapping, m_len);
-				
+
 				// Get a zero-page up behind the JSON text
 				if (zeroPage)
 				{
@@ -1460,24 +1460,105 @@ public:
 				// Initialize the parser on the JSON text
 				m_json = Json((cast(char*) mapping)[0 .. cast(size_t) info.st_size], No.simdPrep);
 			}
+			else version (Windows)
+			{
+				import core.sys.windows.winnt;
+				import core.sys.windows.winbase;
+
+				HANDLE hnd = { return CreateFileW( wcharPtr!fname, GENERIC_READ, FILE_SHARE_READ, null,
+						OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, null ); }();
+
+				if (hnd == INVALID_HANDLE_VALUE)
+					throw new FileException("Could not open JSON file for reading.");
+				scope(exit)
+					CloseHandle( hnd );
+
+				// Get the file size
+				LARGE_INTEGER fileSize = void;
+				if (!GetFileSizeEx( hnd, &fileSize ))
+					throw new Exception("Could not get JSON file size.");
+
+				// Map the file
+				HANDLE mapping = CreateFileMapping( hnd, null, PAGE_READONLY, fileSize.HighPart, fileSize.LowPart, null );
+				if (mapping == INVALID_HANDLE_VALUE)
+					throw new Exception("Could not create file mapping for JSON file.");
+				scope(exit) CloseHandle( mapping );
+
+				// View the mapping
+				void* view = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 0 );
+				if (view is null)
+					throw new Exception("Could not map view of JSON file.");
+				scope(failure)
+					UnmapViewOfFile( view );
+				
+				// Missing 64-bit version in druntime (2.071)
+				version (X86_64) struct MEMORY_BASIC_INFORMATION {
+					PVOID     BaseAddress;
+					PVOID     AllocationBase;
+					DWORD     AllocationProtect;
+					DWORD     __alignment1;
+					ULONGLONG RegionSize;
+					DWORD     State;
+					DWORD     Protect;
+					DWORD     Type;
+					DWORD     __alignment2;
+				}
+				
+				// Check if the view is 16 bytes larger than the file
+				MEMORY_BASIC_INFORMATION query = void;
+				if (!VirtualQuery( view, cast(PMEMORY_BASIC_INFORMATION)&query, query.sizeof ))
+					throw new Exception("VirtualQuery failed.");
+				
+				// Initialize the parser on the JSON text
+				char[] slice = (cast(char*) view)[0 .. cast(size_t)fileSize.QuadPart];
+				if (query.RegionSize >= fileSize.QuadPart + 16)
+				{
+					m_json = Json(slice, No.simdPrep);
+					m_isMapping = true;
+				}
+				else
+				{
+					m_json = Json(slice, Yes.simdPrep);
+					UnmapViewOfFile( view );
+				}
+			}
 			else static assert(0, "Not implemented");
 		}
-		
-		
+
+
 		this(const(char)[] fname)
 		{
-			this(fname.representation);
+			import std.string;
+
+			version (Posix)
+				this( fname.representation );
+			else version (Windows)
+			{
+				import core.stdc.stdlib;
+				auto buf = cast(wchar*)alloca(string2wstringSize(fname));
+				auto fnameW = string2wstring(fname, buf);
+				this( fnameW.representation );
+			}
+			else static assert(0, "Not implemented");
 		}
-		
-		
+
+
 		nothrow
 		~this()
 		{
 			version (Posix)
 			{
 				import core.sys.posix.sys.mman;
-				munmap(cast(void*) m_json.m_start, m_len);
+				munmap(cast(void*)m_json.m_start, m_len);
 			}
+			else version (Windows)
+			{
+				import core.sys.windows.winnt;
+				import core.sys.windows.winbase;
+				if (m_isMapping)
+					UnmapViewOfFile( cast(LPCVOID)m_json.m_start );
+			}
+			else static assert(0, "Not implemented");
 		}
 	}
 }
