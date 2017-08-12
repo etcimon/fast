@@ -15,6 +15,7 @@
 module fast.intmath;
 
 import fast.internal.helpers;
+import fast.internal.sysdef;
 
 
 version (LDC)

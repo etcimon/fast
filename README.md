@@ -8,7 +8,7 @@ The contained functions avoid GC allocations and input validation. They may use 
 #### Benchmark
 A benchmark is included and can be run through dub, e.g.:
 
-    dub --build=release --compiler=gdc
+    dub --config=benchmark --build=release --compiler=gdc
 
 #### Examples
 ##### Read JSON file with coordinates.

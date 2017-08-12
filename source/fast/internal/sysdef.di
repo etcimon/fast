@@ -18,41 +18,71 @@
 module fast.internal.sysdef;
 
 
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ Operating System
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
+private enum 一ARCHITECTURE一;
+
+version (X86_64) {
+	enum isAMD64 = true;
+	enum isX86   = false;
+} else version (X86) {
+	enum isAMD64 = false;
+	enum isX86   = true;
+}
+
+version (X86_64)
+	enum hasSSE2 = true;
+else
+	enum hasSSE2 = false;
+
+
+private enum 一OPERATING一SYSTEM一;
+
+version (Posix)
+	enum isPosix = true;
+else
+	enum isPosix = false;
+
+version (Windows)
+	enum isWindows = true;
+else
+	enum isWindows = false;
 
 /*******************************************************************************
  * 
  * Despite Phobos' use of `char[]` UTF-8 strings for file names, their internal
- * representation in the operating system is a sequence of `ubyte`s or
- * `ushort`s. In particular they are not a subset of any Unicode encoding and
- * their visual representation may require transcoding unless they are portable,
- * which basically means a subset of ASCII excluding any characters treated
- * specially or regarded invalid by some operating systems.
+ * representation in the operating system is a sequence of 8- or 16-bit values.
+ * On Windows this means that one could get invalid surrogate pairings and on
+ * Linux, a file name can have any 8-bit encoding that keeps '/' at the same
+ * code point as ASCII. That's why portable file names should only use a subset
+ * of ASCII that is interpreted the same in all supported encodings.
+ * 
+ * MSDN mentions that file paths should be treated as a sequence of `WCHAR`:
+ * https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
  *
  **************************************/
-version (Posix)
-{
+static if (isPosix)
 	alias FileChar = ubyte;
-}
 else version (Windows)
-{
-	import core.sys.windows.windows : WCHAR;
-	alias FileChar = WCHAR;
-}
+	alias FileChar = ushort;
 else static assert(0, "Not implemented");
 
 alias Filename = FileChar[];
 
 
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ Compiler Unification
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
+private enum 一COMPILER一UNIFICATION一;
+
+version (LDC) {
+	enum isLDC = true;
+	enum isGDC = false;
+	enum isDMD = false;
+} else version (GNU) {
+	enum isLDC = false;
+	enum isGDC = true;
+	enum isDMD = false;
+} else version (DigitalMars) {
+	enum isLDC = false;
+	enum isGDC = false;
+	enum isDMD = true;
+}
 
 version (DigitalMars)
 {
@@ -75,49 +105,12 @@ else version (LDC)
 	enum sse4_2      = ldc.attributes.target("+sse4.2");
 }
 
-
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ Architecture
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
-
-version (X86_64)
-	enum hasSSE2 = true;
-else
-	enum hasSSE2 = false;
-
-
 version (assert)
 	enum isRelease = false;
 else
 	enum isRelease = true;
 
-
-version (Posix)
-	enum isPosix = true;
+version (D_PIC)
+	enum isPIC = true;
 else
-	enum isPosix = false;
-
-version (X86_64) {
-	enum isAMD64 = true;
-	enum isX86   = false;
-} else version (X86) {
-	enum isAMD64 = false;
-	enum isX86   = true;
-}
-
-
-version (LDC) {
-	enum isLDC = true;
-	enum isGDC = false;
-	enum isDMD = false;
-} else version (GNU) {
-	enum isLDC = false;
-	enum isGDC = true;
-	enum isDMD = false;
-} else version (DigitalMars) {
-	enum isLDC = false;
-	enum isGDC = false;
-	enum isDMD = true;
-}
+	enum isPIC = false;

@@ -388,7 +388,9 @@ private:
 
 template SimdMatcher(string match)
 {
-	import core.simd, std.string, fast.internal.helpers;
+	import core.simd;
+	import std.string;
+	import fast.internal.sysdef;
 	
 	static if (match != strip(match)) {
 		// Reinstanciate the template with any whitespace stripped from the match string.
@@ -429,7 +431,8 @@ template SimdMatcher(string match)
 			size_t find(scope inout(char*) b, scope inout(char*) e) pure nothrow @nogc
 			{
 				import core.stdc.string;
-				
+				import fast.internal.helpers;
+
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar) {
 					return memchr(b, singleChar, e - b) - b;
@@ -480,15 +483,18 @@ template SimdMatcher(string match)
 		}
 		else
 		{
+			import core.stdc.string, core.simd;
+			import std.simd;
+			import fast.internal.helpers;
+			
+			version (LDC) {
+				import ldc.gccbuiltins_x86;
+			} else version (GNU) {
+				import gcc.builtins;
+			}
+			
 			size_t find(scope inout(char*) b, scope inout(char*) e) pure nothrow
 			{
-				import core.stdc.string, core.simd, std.simd;
-				version (LDC) {
-					import ldc.gccbuiltins_x86;
-				} else version (GNU) {
-					import gcc.builtins;
-				}
-				
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar) {
 					return memchr(b, singleChar, e - b) - b;
@@ -515,13 +521,6 @@ template SimdMatcher(string match)
 			
 			inout(char)* find(scope inout(char*) b) pure nothrow
 			{
-				import core.stdc.string, core.simd, std.simd;
-				version (LDC) {
-					import ldc.gccbuiltins_x86;
-				} else version (GNU) {
-					import gcc.builtins;
-				}
-				
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar && singleChar == '\0') {
 					return strlen(b) + b;

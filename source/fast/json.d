@@ -1,18 +1,17 @@
-﻿/*******************************************************************************
+/***************************************************************************************************
  * 
  * A fast JSON parser implementing RFC 7159.
  * 
- * The most prominent change compared to the initial revision is the allowance
- * of all data types as root values, not just objects and arrays.
+ * The most prominent change compared to the initial revision is the allowance of all data types as
+ * root values, not just objects and arrays.
  * 
  * Usage_Hints:
  *   $(UL
  *     $(LI This parser only supports UTF-8 without BOM.)
- *     $(LI When a JSON object has duplicate keys, the last one in the set will
- *          determine the value of associative-array entries or struct fields.)
- *     $(LI `BigInt` and large number parsing are not implemented currently, but
- *          all integral types as well as minimal exact representations of many
- *          `double` values are supported.)
+ *     $(LI When a JSON object has duplicate keys, the last one in the set will determine the value
+ *          of associative-array entries or struct fields.)
+ *     $(LI `BigInt` and large number parsing are not implemented currently, but all integral types
+ *          as well as minimal exact representations of many `double` values are supported.)
  *   )
  * 
  * Authors:
@@ -24,7 +23,7 @@
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
  * 
- **************************************/
+ **************************************************************************************************/
 module fast.json;
 
 import core.stdc.string;
@@ -42,7 +41,7 @@ import std.uni;
 
 import fast.buffer;
 import fast.cstring;
-import fast.internal.helpers;
+import fast.internal.sysdef;
 import fast.parsing;
 
 
@@ -525,7 +524,7 @@ public:
 
 	private dchar decodeUtf16HexToCodepoint()
 	{
-		import std.typecons;
+		import fast.internal.helpers;
 
 		uint cp, hi;
 		foreach (i; staticIota!(0, 2))
@@ -1487,6 +1486,7 @@ public:
 private template buildRemapTable(T)
 {
 	import std.typetuple;
+	import fast.internal.helpers;
 
 	static if (is(T == enum))
 	{

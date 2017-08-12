@@ -146,7 +146,7 @@ void jsonCoordinates(bool integral)()
 	import std.random;
 	import std.range;
 	import std.typecons;
-	import fast.internal.helpers;
+	import fast.internal.sysdef;
 
 	enum coordCount = 10_000;
 	auto rng = Mt19937(0);
@@ -182,7 +182,7 @@ void jsonCoordinates(bool integral)()
 		else
 			enum expect = tuple(5003L, 4979L, 4971L);
 	}
-	else static if (isDMD && isX86 && !isRelease || isGDC && isX86)
+	else static if (isDMD && isX86 && !isRelease || isDMD && isX86 && isRelease && __VERSION__ < 2069 || isGDC && isX86)
 		enum expect = tuple(0.49823454184104704, 0.50283215330409059, 0.49828840592580270);
 	else static if (!isX86 || !isRelease)
 		enum expect = tuple(0.49683911677479053, 0.50166077554665356, 0.49647639699603635);

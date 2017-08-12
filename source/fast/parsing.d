@@ -15,7 +15,7 @@
 module fast.parsing;
 
 import std.traits;
-import fast.internal.helpers;
+import fast.internal.sysdef;
 
 
 /+
@@ -129,7 +129,7 @@ struct NumberOptions
 @nogc pure nothrow
 bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNumeric!N)
 {
-	import core.bitop;
+	import fast.internal.helpers;
 	import std.range;
 
 	// Integer types larger than the mantissa of N.
@@ -323,7 +323,7 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 				static if (isAMD64 && (isLDC || isGDC))
 				{
 					// AMD64 can divide 128-bit numbers by 64-bit numbers directly.
-					ubyte expDivisor = clz(divisor);
+					size_t expDivisor = clz(divisor);
 					divisor <<= expDivisor;
 					exp2 = expDivisor - exponent - bigDiv(significand, divisor);
 					significand <<= 1;
@@ -335,7 +335,7 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 					U quotient = dividend / divisor;
 					dividend %= divisor;
 
-					ubyte lzs = clz(quotient);
+					size_t lzs = clz(quotient);
 					exp2 -= exponent + lzs;
 					significand = quotient << ++lzs;
 					size_t accuracy = 8 * U.sizeof - lzs;
@@ -448,7 +448,7 @@ private template PowData(U, U base)
 static if (isAMD64 && (isLDC || isGDC))
 {
 	@nogc pure nothrow
-	private ubyte bigDiv(ref size_t a, size_t b)
+	private size_t bigDiv(ref size_t a, size_t b)
 	in
 	{
 		assert(b > size_t.max / 2, "High bit of divisor must be set.");
@@ -456,7 +456,8 @@ static if (isAMD64 && (isLDC || isGDC))
 	body
 	{
 		// Make sure that the division will yield exactly 32 or 64 significant bits.
-		ubyte lza = clz(a);
+		import fast.internal.helpers;
+		size_t lza = clz(a);
 		version (LDC)
 		{
 			import ldc.llvmasm;
@@ -485,7 +486,8 @@ static if (isAMD64 && (isLDC || isGDC))
 		size_t b = size_t.max / 5;
 		version (X86_64)
 		{
-			int exp = clz(b);   // Positive base-2 exponent
+			import fast.internal.helpers;
+			long exp = clz(b);   // Positive base-2 exponent
 			b <<= exp;
 			exp -= bigDiv(a, b);
 			assert(a == 0xE8BA2E8BA2E8BA2AUL);
@@ -751,6 +753,8 @@ private void vpcmpistri(C, immutable(C[]) cs, Operation op, Polarity pol = Polar
 	(ref const(char)* p)
 		if (is(C == char) || is(C == ubyte) || is(C == wchar) || is(C == ushort) || is(C == byte) || is(C == short))
 {
+	import fast.internal.helpers;
+
 	// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53712
 	static if (is(C == char) || is(C == ubyte))
 		enum ct = 0b00;

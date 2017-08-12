@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/***************************************************************************************************
  * 
  * Helper functions that serve general purposes.
  * 
@@ -11,75 +11,14 @@
  * License:
  *   $(LINK2 http://www.gnu.org/licenses/gpl-3.0, GNU General Public License 3.0)
  * 
- **************************************/
+ **************************************************************************************************/
 module fast.internal.helpers;
 
 import std.traits;
+import fast.internal.sysdef;
 
 
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ Meta programming
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
-
-version (Posix)
-	enum isPosix = true;
-else
-	enum isPosix = false;
-
-version (X86_64) {
-	enum isAMD64 = true;
-	enum isX86   = false;
-} else version (X86) {
-	enum isAMD64 = false;
-	enum isX86   = true;
-}
-
-version (LDC) {
-	enum isLDC = true;
-	enum isGDC = false;
-	enum isDMD = false;
-} else version (GNU) {
-	enum isLDC = false;
-	enum isGDC = true;
-	enum isDMD = false;
-} else version (DigitalMars) {
-	enum isLDC = false;
-	enum isGDC = false;
-	enum isDMD = true;
-}
-
-version (D_PIC)
-	enum isPIC = true;
-else
-	enum isPIC = false;
-
-static if (__VERSION__ < 2067)
-{
-	import std.typetuple;
-
-	//Required for FieldNameTuple
-	private enum NameOf(alias T) = T.stringof;
-
-	/**
-	 * Get as an expression tuple the names of the fields of a struct, class, or
-	 * union. This consists of the fields that take up memory space, excluding the
-	 * hidden fields like the virtual function table pointer or a context pointer
-	 * for nested types. If $(D T) isn't a struct, class, or union returns an
-	 * expression tuple with an empty string.
-	 */
-	template FieldNameTuple(T)
-	{
-		static if (is(T == struct) || is(T == union))
-			alias FieldNameTuple = staticMap!(NameOf, T.tupleof[0 .. $ - isNested!T]);
-		else static if (is(T == class))
-			alias FieldNameTuple = staticMap!(NameOf, T.tupleof);
-		else
-			alias FieldNameTuple = TypeTuple!"";
-	}
-}
-
+private enum 一META一PROGRAMMING一;
 
 // 2.071 fixed visibility rules, so we need to roll our own staticIota.
 static if (__VERSION__ < 2071)
@@ -131,39 +70,6 @@ template UnsignedOf(I) if (isIntegral!I)
 }
 
 
-/// Helper mixins to force enable/diasble inlining via pragma on recent compilers.
-enum inlineTrue = "static if (__VERSION__ > 2_067) pragma(inline, true);";
-/// ditto
-enum inlineFalse = "static if (__VERSION__ > 2_067) pragma(inline, false);";
-
-
-version (GNU)
-{
-	import gcc.attribute;
-	enum noinline    = gcc.attribute.attribute("noinline");
-	enum forceinline = gcc.attribute.attribute("forceinline");
-	enum sse4        = gcc.attribute.attribute("target", "sse4");
-}
-else
-{
-	enum noinline;
-	enum forceinline;
-	enum sse4;
-}
-
-
-version (X86_64)
-	enum hasSSE2 = true;
-else
-	enum hasSSE2 = false;
-
-
-version (assert)
-	enum isRelease = false;
-else
-	enum isRelease = true;
-
-
 /**
  * Generates a mixin string for repeating code. It can be used to unroll variadic arguments.
  * A format string is instantiated a certain number times with an incrementing parameter.
@@ -205,11 +111,12 @@ enum getUDA(alias sym, T)()
 }
 
 
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ Bit operations
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
+private enum 一BIT一OPERATIONS一;
+
+static import core.bitop;
+
+alias bsr = core.bitop.bsr;
+alias bsf = core.bitop.bsf;
 
 /*******************************************************************************
  * 
@@ -225,79 +132,95 @@ enum getUDA(alias sym, T)()
  **************************************/
 version (DigitalMars)
 {
-	@safe @nogc pure nothrow
-	ubyte clz(U)(U u) if (is(U == uint) || is(U == ulong))
+	@safe @nogc pure nothrow U
+	clz(U)(U u) if (is(Unqual!U == uint) || is(Unqual!U == size_t))
 	{
-		mixin(inlineTrue);
-		import core.bitop;
-		enum max = 8 * U.sizeof - 1;
-		static if (isX86 && is(U == ulong))
+		pragma(inline, true);
+		enum U max = 8 * U.sizeof - 1;
+		return max - bsr(u);
+	}
+
+	static if (isX86)
+	{
+		@safe @nogc pure nothrow uint
+		clz(U)(U u) if (is(Unqual!U == ulong))
 		{
-			uint a = u >> 32;
-			return cast(ubyte) (max - (a ? 32 + bsr(a) : bsr(cast(uint) u)));
+			pragma(inline, true);
+			uint hi = u >> 32;
+			return hi ? 31 - bsr(hi) : 63 - bsr(cast(uint)u);
 		}
-		else return cast(ubyte) (max - bsr(u));
 	}
 }
 else version (GNU)
 {
 	import gcc.builtins;
 	alias clz = __builtin_clz;
-	version (X86_64)
+	static if (isX86)
 	{
-		@safe @nogc pure nothrow
-		ubyte clz(ulong u)
+		@safe @nogc pure nothrow uint
+		clz(ulong u)
 		{
-			return cast(ubyte) __builtin_clzl(u);
+			uint hi = u >> 32;
+			return hi ? __builtin_clz(hi) : 32 + __builtin_clz(cast(uint)u);
 		}
 	}
-	else
-	{
-		@safe @nogc pure nothrow
-		ubyte clz(ulong u)
-		{
-			uint a = u >> 32;
-			return cast(ubyte) (a ? __builtin_clzl(a) : 32 + __builtin_clzl(cast(uint) u));
-		}
-	}
+	else alias clz = __builtin_clzl;
 }
 else version (LDC)
 {
-	@safe @nogc pure nothrow
-	ubyte clz(U)(U u) if (is(U == uint) || is(U == ulong))
+	@safe @nogc pure nothrow U
+	clz(U)(U u) if (is(Unqual!U == uint) || is(Unqual!U == size_t))
 	{
+		pragma(inline, true);
 		import ldc.intrinsics;
-		return cast(ubyte) llvm_ctlz(u, false);
+		return llvm_ctlz(u, false);
+	}
+
+	static if (isX86)
+	{
+		@safe @nogc pure nothrow uint
+		clz(U)(U u) if (is(Unqual!U == ulong))
+		{
+			pragma(inline, true);
+			import ldc.intrinsics;
+			return cast(uint)llvm_ctlz(u, false);
+		}
 	}
 }
-
-
-version (X86)
+static if (__VERSION__ < 2071)
 {
-	@safe @nogc pure nothrow
-	int bsr(ulong u)
+	// < 2.071 did not have 64-bit bsr/bsf on x86.
+	@safe @nogc pure nothrow uint
+	bsr(U)(U u) if (is(Unqual!U == ulong))
 	{
-		import core.bitop;
-		uint a = u >> 32;
-		return a ? 32 + core.bitop.bsr(a) : core.bitop.bsr(cast(uint) u);
+		pragma(inline, true);
+		uint hi = u >> 32;
+		return hi ? bsr(hi) + 32 : bsr(cast(uint)u);
 	}
-
-
-	@safe @nogc pure nothrow
-	int bsf(ulong u)
+	
+	@safe @nogc pure nothrow uint
+	bsf(U)(U u) if (is(Unqual!U == ulong))
 	{
-		import core.bitop;
-		uint a = cast(uint) u;
-		return a ? core.bitop.bsf(a) : 32 + core.bitop.bsf(u >> 32);
+		pragma(inline, true);
+		uint lo = cast(uint)u;
+		return lo ? bsf(lo) : 32 + bsf(u >> 32);
 	}
+}
+unittest
+{
+	assert(clz(uint(0x01234567)) == 7);
+	assert(clz(ulong(0x0123456701234567)) == 7);
+	assert(clz(ulong(0x0000000001234567)) == 7+32);
+	assert(bsr(uint(0x01234567)) == 24);
+	assert(bsr(ulong(0x0123456701234567)) == 24+32);
+	assert(bsr(ulong(0x0000000001234567)) == 24);
+	assert(bsf(uint(0x76543210)) == 4);
+	assert(bsf(ulong(0x7654321076543210)) == 4);
+	assert(bsf(ulong(0x7654321000000000)) == 4+32);
 }
 
 
-/+
- ╔══════════════════════════════════════════════════════════════════════════════
- ║ ⚑ 
- ╚══════════════════════════════════════════════════════════════════════════════
- +/
+private enum 一MISCELLANEOUS一;
 
 pure nothrow @nogc
 {
