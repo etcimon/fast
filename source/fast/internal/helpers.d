@@ -220,6 +220,12 @@ unittest
 }
 
 
+private enum 一UNITTESTING一;
+
+// Insert a dummy main when unittesting outside of dub.
+version (VibeCustomMain) {} else version (unittest) void main() {}
+
+
 private enum 一MISCELLANEOUS一;
 
 pure nothrow @nogc
