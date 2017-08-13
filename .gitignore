@@ -12,3 +12,6 @@
 
 # Unicode Character Database files can be downloaded here when tables need to be regenerated
 /ucd/
+
+# Mono-D user preferences
+/mono-d/fast.userprefs

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{DFEB5CCB-A636-4971-8302-89CDBF3B4503}</ProjectGuid>
+    <PreferOneStepBuild>true</PreferOneStepBuild>
+    <UseDefaultCompiler>false</UseDefaultCompiler>
+    <IncrementalLinking>True</IncrementalLinking>
+    <Compiler>DMD</Compiler>
+    <ExtraCompilerArguments>
+    </ExtraCompilerArguments>
+    <ExtraLinkerArguments>
+    </ExtraLinkerArguments>
+    <BaseDirectory>..\source</BaseDirectory>
+    <ReleaseVersion>0.3.2</ReleaseVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Benchmark|AnyCPU' ">
+    <OutputPath>..\generated</OutputPath>
+    <Target>Executable</Target>
+    <OutputName>benchmark</OutputName>
+    <UnittestMode>false</UnittestMode>
+    <DebugLevel>0</DebugLevel>
+    <ObjectsDirectory>../generated/release</ObjectsDirectory>
+    <DDocDirectory>../docs</DDocDirectory>
+    <VersionIds>
+      <VersionIds>
+        <String>benchmark</String>
+      </VersionIds>
+    </VersionIds>
+    <LinkinThirdPartyLibraries>false</LinkinThirdPartyLibraries>
+    <ConsolePause>false</ConsolePause>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>..\generated</OutputPath>
+    <LinkinThirdPartyLibraries>false</LinkinThirdPartyLibraries>
+    <ObjectsDirectory>../generated/debug</ObjectsDirectory>
+    <DDocDirectory>../docs</DDocDirectory>
+    <VersionIds>
+      <VersionIds>
+        <String>benchmark</String>
+      </VersionIds>
+    </VersionIds>
+    <UnittestMode>false</UnittestMode>
+    <OutputName>benchmark-debug</OutputName>
+    <Target>Executable</Target>
+    <ConsolePause>false</ConsolePause>
+    <DebugLevel>0</DebugLevel>
+    <Externalconsole>true</Externalconsole>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Unittest|x86' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>..\generated</OutputPath>
+    <ConsolePause>false</ConsolePause>
+    <Target>Executable</Target>
+    <OutputName>fast-unittest-x86</OutputName>
+    <UnittestMode>true</UnittestMode>
+    <LinkinThirdPartyLibraries>false</LinkinThirdPartyLibraries>
+    <DebugLevel>0</DebugLevel>
+    <ObjectsDirectory>../generated/unittest-x86</ObjectsDirectory>
+    <DDocDirectory>../docs</DDocDirectory>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Unittest|x64' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>..\generated</OutputPath>
+    <ConsolePause>false</ConsolePause>
+    <Target>Executable</Target>
+    <OutputName>fast-unittest-x64</OutputName>
+    <UnittestMode>true</UnittestMode>
+    <LinkinThirdPartyLibraries>false</LinkinThirdPartyLibraries>
+    <DebugLevel>0</DebugLevel>
+    <ObjectsDirectory>../generated/unittest-x64</ObjectsDirectory>
+    <DDocDirectory>../docs</DDocDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="source\fast\" />
+    <Folder Include="source\std\" />
+    <Folder Include="..\source\fast\" />
+    <Folder Include="..\source\fast\internal\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\source\std\simd.d" />
+    <Compile Include="..\source\fast\internal\unicode_tables.d" />
+    <Compile Include="..\source\fast\unicode.d" />
+    <Compile Include="..\source\fast\internal\benchmarks.d" />
+    <Compile Include="..\source\fast\parsing.d" />
+    <Compile Include="..\source\fast\intmath.d" />
+    <Compile Include="..\source\fast\internal\helpers.d" />
+    <Compile Include="..\source\fast\format.d" />
+    <Compile Include="..\source\fast\string.d" />
+    <Compile Include="..\source\fast\json.d" />
+    <Compile Include="..\source\fast\cstring.d" />
+    <Compile Include="..\source\fast\buffer.d" />
+  </ItemGroup>
+  <ProjectExtensions>
+    <MonoDevelop>
+      <Properties>
+        <Policies>
+          <ChangeLogPolicy UpdateMode="None" inheritsSet="Mono">
+            <MessageStyle LineAlign="0" />
+          </ChangeLogPolicy>
+        </Policies>
+      </Properties>
+    </MonoDevelop>
+  </ProjectExtensions>
+  <ItemGroup>
+    <None Include="..\source\fast\locale.d" />
+    <None Include="..\source\fast\internal\sysdef.di" />
+  </ItemGroup>
+</Project>
