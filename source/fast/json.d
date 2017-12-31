@@ -170,6 +170,13 @@ enum
 struct JsonMapping { string[string] map; }
 
 
+/// JSON parser state returned by the `state` property.
+struct JsonParserState {
+	const(char)*    text;
+	size_t          nesting;
+}
+
+
 /*******************************************************************************
  * 
  * This is a forward JSON parser for picking off items of interest on the go.
@@ -195,11 +202,11 @@ private:
 	enum isValidating  = vl >= validateUsed;
 	enum isValidateAll = vl == validateAll;
 
-	const(char)*    m_text    = void;
-	const(char*)    m_start   = void;
-	size_t          m_nesting = 0;
+	const(char*)    m_start     = void;
+	const(char)*    m_text      = void;
+	size_t          m_nesting   = 0;
 	RaiiArray!char  m_mem;
-	bool            m_isString = false;
+	bool            m_isString  = false;
 
 
 public:
@@ -1160,6 +1167,32 @@ public:
 			if (vt == ubyte.max)
 				expectNot("while peeking at next value type");
 		return vt;
+	}
+
+
+	/*******************************************************************************
+	 *
+	 * Save or restore the parser's internal state.
+	 *
+	 * If you want to read only a certain object from the JSON, but exactly which
+	 * depends on the value of some key, this is where saving and restoring the
+	 * parser state helps.
+	 *
+	 * Before each candidate you save the parser state. Then you perform just the
+	 * minimal work to test if the candidate matches some criteria. If it does,
+	 * restore the parser state and read the elements in full. Of it doesn't, just
+	 * skip to the next.
+	 *
+	 **************************************/
+	@property const(JsonParserState) state() const
+	{
+		return JsonParserState(m_text, m_nesting);
+	}
+
+	@property void state(const JsonParserState oldState)
+	{
+		m_text    = oldState.text;
+		m_nesting = oldState.nesting;
 	}
 
 

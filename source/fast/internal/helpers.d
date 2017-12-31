@@ -197,7 +197,7 @@ static if (__VERSION__ < 2071)
 		uint hi = u >> 32;
 		return hi ? bsr(hi) + 32 : bsr(cast(uint)u);
 	}
-	
+
 	@safe @nogc pure nothrow uint
 	bsf(U)(U u) if (is(Unqual!U == ulong))
 	{
