@@ -21,13 +21,9 @@ import fast.internal.sysdef;
 private enum 一META一PROGRAMMING一;
 
 // 2.071 fixed visibility rules, so we need to roll our own staticIota.
-static if (__VERSION__ < 2071)
+static if (__VERSION__ >= 2071)
 {
-	import std.typecons : staticIota;
-}
-else
-{
-	import std.typecons : AliasSeq;
+	import std.meta : AliasSeq;
 
 	template staticIota(int beg, int end)
 	{
@@ -48,6 +44,10 @@ else
 			alias staticIota = AliasSeq!(staticIota!(beg, mid), staticIota!(mid, end));
 		}
 	}
+}
+else
+{
+	import std.typecons : staticIota;
 }
 
 
