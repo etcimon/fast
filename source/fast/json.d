@@ -771,7 +771,7 @@ public:
 	{
 		T aa;
 		foreach (key; byKey)
-			aa[key] = read!(ValueType!T)();
+			aa[m_isString ? cast(immutable)key : key.idup] = read!(ValueType!T)();
 		return aa;
 	}
 
