@@ -68,10 +68,10 @@ bool split(string match)(scope inout(char[]) str, ref inout(char)[] before, ref 
  */
 char split(string match)(scope inout(char*) ptr, ref inout(char)[] before, ref inout(char)* after)
 {
-	immutable pos = SimdMatcher!match.find(str.ptr);
-	before = ptr[0 .. pos];
-	after = ptr + pos + 1;
-	return ptr[pos];
+	auto pos = SimdMatcher!match.find(ptr);
+	before = ptr[0 .. pos - ptr];
+	after = pos + 1;
+	return *pos;
 }
 
 
@@ -497,7 +497,7 @@ template SimdMatcher(string match)
 			{
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar) {
-					return memchr(b, singleChar, e - b) - b;
+					return (cast(inout(char*))memchr(b, singleChar, e - b)) - b;
 				} else {
 					if (b >= e) return 0;
 					

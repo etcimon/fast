@@ -3900,7 +3900,7 @@ bool anyLessEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 // Generate bit masks
 
 // generate a bitmask of for elements: Rn = An == Bn ? -1 : 0
-void16 maskEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+byte16 maskEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
