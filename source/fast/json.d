@@ -198,7 +198,7 @@ struct Json(uint vl = validateUsed, bool validateUtf8 = vl > trustedSource)
 private:
 
 	enum isTrusted     = vl == trustedSource;
-	enum skipAllInter  = vl == trustedSource;
+	enum skipAllInter  = false;
 	enum isValidating  = vl >= validateUsed;
 	enum isValidateAll = vl == validateAll;
 
@@ -518,6 +518,10 @@ public:
 				dst[0] = cast(char)(0b110_00000 | cp >> 6);
 				dst[1] = cast(char)(0b10_000000 | cp       & 0b00_111111);
 				return 2;
+			}
+			else if (cp <= 0x20) {
+				dst[0] = '?';
+				return 1;
 			}
 			else
 			{
@@ -1233,7 +1237,7 @@ public:
 		}
 		result = dlg(idx);
 		if (oldPos is m_text)
-			skipValueImpl!(!isValidateAll)();
+			skipValueImpl!false();
 		
 	PastValue:
 		if (*m_text == braces[1])

@@ -100,8 +100,8 @@ else version (GNU)
 else version (LDC)
 {
 	import ldc.attributes;
-	enum noinline;
-	enum forceinline;
+	enum noinline = ldc.attributes.optStrategy("none");
+	enum forceinline = ldc.attributes.llvmAttr("always_inline", true);
 	enum sse4_2      = ldc.attributes.target("+sse4.2");
 }
 
