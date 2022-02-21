@@ -17,7 +17,11 @@ module fast.internal.helpers;
 import std.traits;
 import fast.internal.sysdef;
 
+static void function(string) nothrow @safe logInfo;
+static void function(string) nothrow @safe logError;
 
+static enum isX86 = false;
+static enum isAMD64 = false;
 private enum 一META一PROGRAMMING一;
 
 // 2.071 fixed visibility rules, so we need to roll our own staticIota.
@@ -89,7 +93,6 @@ template UnsignedOf(I) if (isIntegral!I)
 enum ctfeJoin(size_t length)(in string fmt, in string joiner = null)
 {
 	import std.range : iota;
-	import std.string : format;
 	import std.algorithm : map;
 
 	// BUG: Cannot use, join(), as it "cannot access the nested function 'ctfeJoin'".
@@ -176,7 +179,7 @@ else version (LDC)
 		return llvm_ctlz(u, false);
 	}
 
-	static if (isX86)
+	static if (is(size_t == uint))
 	{
 		@safe @nogc pure nothrow uint
 		clz(U)(U u) if (is(Unqual!U == ulong))
@@ -268,25 +271,4 @@ pure nothrow @nogc
 	}
 
 
-	template SIMDFromString(string str) if (str.length <= 16)
-	{
-		import core.simd, std.algorithm, std.range, std.string;
-
-		private enum data = chain(str.representation, 0.repeat(16 - str.length)).array;
-
-		static if (!isDMD)
-			immutable ubyte16 SIMDFromString = data;
-		else version (D_PIC)
-		{
-			import std.format;
-			void SIMDFromString() @safe @nogc pure nothrow
-			{
-				mixin(format("asm @trusted @nogc pure nothrow { naked; db %(%s,%); }", data));
-			}
-		}
-		else static if (isX86)
-			align(16) __gshared ubyte[16] SIMDFromString = data;
-		else
-			__gshared ubyte16 SIMDFromString = data;
-	}
 }

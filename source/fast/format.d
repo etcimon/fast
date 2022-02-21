@@ -14,10 +14,9 @@
  **************************************/
 module fast.format;
 
-import core.stdc.stdlib;
-import core.stdc.string;
+//import core.stdc.stdlib;
+//import core.stdc.string;
 import core.bitop;
-import std.string;
 import std.traits;
 import std.typecons;
 import std.typetuple;
@@ -29,6 +28,7 @@ import fast.internal.helpers;
  ║ ⚑ Hex String
  ╚══════════════════════════════════════════════════════════════════════════════
  +/
+
 
 /**
  * Converts an unsigned type into a fixed width 8 digits hex string using lower-case letters.
@@ -96,15 +96,129 @@ template decDigits(T) if (isIntegral!T)
 		enum decDigits = 3;
 }
 
+template decDigits(T) if (isFloatingPoint!T)
+{
+	static if (is(T == float))
+		enum decDigits = 9;
+	else static if (is(T == double))
+		enum decDigits = 18;
+}
 
 enum decChars(T) = decDigits!T + isSigned!T;
 
+@safe pure nothrow short decCharsVal(T)(T v) if (isIntegral!T) {
+	int maxsize = 10;
+	short digits = 1;
+	if (v < 0) {
+		digits = 2;
+		v *= -1;
+	}
+
+	// calculate left of the decimal
+	while (digits < decChars!T) {
+		if (v < maxsize) {
+			return digits;
+		}
+		maxsize *= 10;
+		digits++;
+	}
+	return decChars!T;
+}
+
+@safe nothrow short decCharsVal(T)(T v) if (isFloatingPoint!T) {
+	int maxsize = 10;
+	uint u = cast(uint) (v < 0 ? -v : v);
+	T dec = (v < 0 ? (-v) : (v)) - u;
+	short digits = 1;
+	if (dec != 0)
+		digits++;
+	if (v < 0)
+		digits++;
+	
+
+	// calculate left of the decimal
+	while (digits < decChars!uint) {
+		if (u < maxsize) {
+			break;
+		}
+		maxsize *= 10;
+		digits++;
+	}
+
+	// calc decimals
+	while (digits < decChars!T && dec > 0) {
+		dec *= 10;
+		uint val = cast(uint) dec;
+		dec -= val;
+		if (dec == 0.) {
+			return digits;
+		}
+		digits++;
+	}
+
+	return digits;
+}
+
+@safe pure nothrow @nogc
+RevFillStr!(decChars!I) decStr(I)(I i) if (isFloatingPoint!I)
+{
+	RevFillStr!(decChars!I) str;
+
+	bool signed = i < 0;
+	uint u = cast(uint) (i < 0 ? -i : i);
+
+	I dec = (i < 0 ? (-i) : (i)) - u;
+	
+	short digits = signed ? 2 : 1;	
+	int maxsize = 10;
+	// calculate left of the decimal
+	while (digits < decChars!uint) {
+		if (u < maxsize) {
+			break;
+		}
+		maxsize *= 10;
+		digits++;
+	}
+
+	char[decDigits!I - 3] decimals = void;
+	foreach (ref d; decimals) d = 0;
+	if (dec != 0) {
+		int j;
+		do {
+			dec *= 10;
+			uint val = cast(uint) dec;
+			decimals[j++] = char('0' + val % 10);
+			dec -= val;
+		} while (dec > 0 && j < decimals.length - digits);
+		bool found_num;
+		foreach_reverse(d; decimals) {
+			if (d > 0 && d > '0' && d <= '9' && !found_num) 
+				found_num = true;
+			
+			if (found_num) 			
+				str ~= d;
+			
+		}
+		str ~= '.';
+	}
+
+	do
+	{
+		str ~= char('0' + u % 10);
+		u /= 10;
+	}
+	while (u > 0);
+
+	static if (isSigned!I) if (signed)
+		str ~= '-';
+
+	return str;
+}
 
 @safe pure nothrow @nogc
 RevFillStr!(decChars!I) decStr(I)(I i) if (isIntegral!I)
 {
 	RevFillStr!(decChars!I) str;
-	size_t idx = decChars!I;
 
 	static if (isSigned!I)
 	{
@@ -125,7 +239,6 @@ RevFillStr!(decChars!I) decStr(I)(I i) if (isIntegral!I)
 
 	return str;
 }
-
 
 /+
  ╔══════════════════════════════════════════════════════════════════════════════
@@ -179,30 +292,44 @@ enum spaceRequirements(string format, Args...)() if (allSatisfy!(hasKnownSpaceRe
 }
 
 
-template tokenizedFormatString(string format)
+ptrdiff_t indexOf(T)(T s, char c) pure nothrow {
+	immutable c1 = c;
+
+	ptrdiff_t i;
+	foreach (const c2; s)
+	{
+		if (c1 == c2)
+			return i;
+		++i;
+	}
+	return -1;
+}
+template tokenizedFormatString(string fmt)
 {
 	enum impl()
 	{
-		Tuple!(string, size_t)[] parts;
+		Tuple!(string, size_t)[8] parts;
 		size_t i = 0;
-		string rest = format;
-
+		size_t j = 0;
+		string rest = fmt;
 		while (1)
 		{
-			ptrdiff_t markerPos = rest.indexOf("%");
-			if (markerPos < 0)
-				return rest.length ? parts ~ tuple(rest, size_t.max) : parts;
-
+			ptrdiff_t markerPos = indexOf(rest,'%');
+			if (markerPos < 0) {
+				if (rest.length) parts[j++] = tuple(rest, size_t.max);
+				return parts;
+			}
 			if (markerPos)
 			{
-				parts ~= tuple(rest[0 .. markerPos], size_t.max);
+				parts[j++] = tuple(rest[0 .. markerPos], size_t.max);
 				rest = rest[markerPos .. $];
 			}
 
 			// TODO: more complex formats
-			parts ~= tuple(rest[0 .. 2], i++);
+			parts[j++] = tuple(rest[0 .. 2], i++);
 			rest = rest[2 .. $];
 		}
+		
 	}
 
 	enum result = impl();
@@ -216,7 +343,7 @@ enum formatStringArgCount(string format)()
 
 	alias parts = tokenizedFormatString!format;
 	foreach (i; staticIota!(0, parts.length))
-		if (parts[i][1] != size_t.max && parts[i][1] >= count)
+		if (parts[i][0] != null && parts[i][1] != size_t.max && parts[i][1] >= count)
 			count = parts[i][1] + 1;
 
 	return count;
@@ -319,25 +446,24 @@ template formats(string fmt)
 	
 	mixin(codeGen());
 }
-
-
 char[] formattedWrite(string format, Args...)(char* buffer, Args args)
 {
+	import ldc.intrinsics;
 	char* it = buffer;
 
 	alias parts = tokenizedFormatString!format;
 	foreach (i; staticIota!(0, parts.length))
 	{
-		static if (parts[i][1] == size_t.max)
+		static if (parts[i][0] != null && parts[i][1] == size_t.max)
 		{
 			// Direct string copy
-			memcpy( it, parts[i][0].ptr, parts[i][0].length );
+			llvm_memcpy( it, parts[i][0].ptr, parts[i][0].length );
 			it += parts[i][0].length;
 		}
-		else
+		else static if (parts[i][0] != null)
 		{
 			// Formatted argument
-			it.formattedWriteItem!(parts[i][0])( args[parts[i][1]] );
+			formattedWriteItem!(parts[i][0])( it, args[parts[i][1]] );
 		}
 	}
 
@@ -345,7 +471,7 @@ char[] formattedWrite(string format, Args...)(char* buffer, Args args)
 }
 
 
-pure nothrow @nogc
+pure nothrow
 void formattedWriteItem(string format, T)(ref char* buffer, T t)
 	if (isUnsigned!T && format == "%x")
 {
@@ -355,7 +481,7 @@ void formattedWriteItem(string format, T)(ref char* buffer, T t)
 }
 
 
-pure nothrow @nogc
+pure nothrow
 void formattedWriteItem(string format, T)(ref char* buffer, T t)
 	if (isUnsigned!T && format == "%X")
 {
@@ -363,19 +489,41 @@ void formattedWriteItem(string format, T)(ref char* buffer, T t)
 	*cast(RT*) buffer = hexStrUpper!T(t);
 	buffer += RT.length;
 }
+import std.format;
 
-
-pure nothrow @nogc
+nothrow 
 void formattedWriteItem(string format, T)(ref char* buffer, T t)
-	if (isIntegral!T && (format == "%s" || format == "%d"))
+	if (format == "%s" || format == "%d" || format == "%f")
 {
-	auto str = decStr(t);
-	memcpy( buffer, str.ptr, str.length );
-	buffer += str.length;
+	import ldc.intrinsics;
+	static if (isIntegral!T || isFloatingPoint!T) auto str = decStr(t);
+	else auto str = t;
+	
+	static if (is(typeof(str) : char)){
+		llvm_memcpy( buffer, &str, char.sizeof );
+		buffer += char.sizeof;
+	}
+	else {
+		ptrdiff_t quote_idx = str.indexOf('"');
+		auto str_ptr = str.ptr;
+		size_t remaining = str.length;
+		while (quote_idx > -1) {
+			llvm_memcpy(buffer, str_ptr, quote_idx);
+			buffer += quote_idx;
+			*buffer = '\\';
+			buffer++;
+			str_ptr += quote_idx;
+			remaining -= quote_idx;
+			quote_idx = indexOf(buffer[0 .. str.length - quote_idx],'"');
+		}
+		llvm_memcpy( buffer, str_ptr, remaining );
+		buffer += remaining;
+	}
+	
 }
 
 
-pure nothrow @nogc
+pure nothrow
 void formattedWriteItem(string format)(ref char* buffer, void* p)
 	if (format == "%s" || format == "%p")
 {
@@ -432,4 +580,9 @@ public:
 	{
 		return n - offset;
 	}
+}
+
+bool isValidDchar(dchar c) pure nothrow @safe @nogc
+{
+    return c < 0xD800 || (c > 0xDFFF && c <= 0x10FFFF);
 }

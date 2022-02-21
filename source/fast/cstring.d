@@ -14,8 +14,8 @@
  **************************************/
 module fast.cstring; @nogc nothrow:
 
-import core.stdc.stdlib;
-import core.stdc.string;
+//import core.stdc.stdlib;
+//import core.stdc.string;
 //import std.traits;
 import fast.buffer;
 
@@ -257,12 +257,35 @@ immutable(char)* charPtr(alias str)()
 StackBufferEntry!char charPtr(SB)(const(char)[] str, ref SB sb)
 	if (is(SB == StackBuffer!bytes, bytes...))
 {
+	import llvm.intrinsics;
 	auto buffer = sb.alloc!char(str.length + 1);
-	memcpy(buffer.ptr, str.ptr, str.length);
+	llvm_memcpy(buffer.ptr, str.ptr, str.length);
 	buffer[str.length] = '\0';
 	return buffer;
 }
+bool isPrintable(T)(T c) @safe pure nothrow @nogc
+{
+    return c >= ' ' && c <= '~';
+}
+size_t strlen(inout(char*) str) pure
+{
+	size_t len_;
+	size_t* len = &len_;
+    for (*len = 0; str[*len]; (*len)++) continue;
+	return len_;
+}
+int memcmp(const(char)* buf1, immutable(char)* buf2, size_t count) pure
+{
+    if(!count)
+        return(0);
 
+    while(--count && *buf1 == *buf2 ) {
+        buf1++;
+        buf2++;
+    }
+
+    return *buf1 - *buf2;
+}
 /**
  * Returns the given $(D ptr) up to but not including the \0 as a $(D char[]).
  */

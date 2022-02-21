@@ -22,7 +22,7 @@ module fast.unicode;
 
 import fast.internal.unicode_tables;
 import fast.internal.sysdef;
-import std.simd;
+//import std.simd;
 
 
 /*******************************************************************************

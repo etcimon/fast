@@ -12,90 +12,12 @@
  */
 module fast.buffer; nothrow
 
-import core.stdc.stdint;
-import core.stdc.stdlib;
+//import core.stdc.stdint;
+//import core.stdc.stdlib;
 import std.range;
-import core.exception;
 
 
 enum allocaLimit = 2048;
-
-
-/*******************************************************************************
- * 
- * Dynamic array using `malloc`, `realloc` and `free` under the hood. Note that
- * memory will be released on scope exit.
- *
- **************************************/
-struct RaiiArray(T)
-{
-private:
-
-	T*     m_ptr;
-	size_t m_capacity;
-
-
-public:
-
-	nothrow
-	this(size_t capacity)
-	{
-		if (capacity)
-		{
-			m_ptr = cast(T*) malloc(capacity);
-			if (m_ptr is null)
-				onOutOfMemoryError();
-			m_capacity = capacity;
-		}
-	}
-
-
-	nothrow @nogc
-	~this()
-	{
-		if (m_ptr !is null)
-			free(m_ptr);
-	}
-
-
-	@safe pure nothrow @nogc
-	@property inout(T)* ptr() inout
-	{
-		return m_ptr;
-	}
-
-
-	@safe pure nothrow @nogc
-	@property size_t capacity() const
-	{
-		return m_capacity;
-	}
-
-
-	nothrow
-	@property void capacity(size_t value)
-	{
-		if (value != 0)
-		{
-			if (T* ptrNew = cast(T*) realloc(m_ptr, value))
-				m_ptr = ptrNew;
-			else onOutOfMemoryError();
-		}
-		else if (m_ptr)
-		{
-			free(m_ptr);
-			m_ptr = null;
-		}
-		m_capacity = value;
-	}
-
-
-	alias length = capacity;
-
-
-	mixin Slicing;
-	mixin CapacityTools;
-}
 
 
 /*******************************************************************************
@@ -342,60 +264,6 @@ public:
 		@property auto range()
 		{
 			return ptr.asOutputRange();
-		}
-	}
-}
-
-
-
-private:
-
-mixin template Slicing()
-{
-	public
-	{
-		@nogc pure nothrow
-		ref inout(T) opIndex(size_t idx) inout
-		in
-		{
-			assert(idx < length);
-		}
-		body
-		{
-			return ptr[idx];
-		}
-
-
-		@nogc pure nothrow
-		inout(T)[] opSlice() inout
-		{
-			return ptr[0 .. length];
-		}
-		
-		
-		@nogc pure nothrow
-		inout(T)[] opSlice(size_t a, size_t b) inout
-		in
-		{
-			assert(a <= b && b <= length);
-		}
-		body
-		{
-			return ptr[a .. b];
-		}
-	}
-}
-
-
-mixin template CapacityTools()
-{
-	public
-	{
-		nothrow
-		void capacityNeeded(size_t c)
-		{
-			if (capacity < c)
-				capacity = c;
 		}
 	}
 }
