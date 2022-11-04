@@ -151,9 +151,9 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 	static if (isFloatingPoint!N)
 	{
 		enum significandRightShift = 8 * U.sizeof - N.mant_dig + 1;
-		enum lastSignificandBit = U(2) << 8 * U.sizeof - N.mant_dig;
+		//enum lastSignificandBit = U(2) << 8 * U.sizeof - N.mant_dig;
 		enum firstFractionBit   = U(1) << 8 * U.sizeof - N.mant_dig;
-		enum remainderBits = U.max - N.mant_dig + 1;
+		//enum remainderBits = U.max - N.mant_dig + 1;
 		enum expShift = N.mant_dig - 1;
 		enum expBias = N.max_exp - 1;
 	}
@@ -403,9 +403,9 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 				str = p;
 				return true;
 			}
-			else assert(0, "Not implemented");
+			//else assert(0, "Not implemented");
 		}
-		else assert(0, "Not implemented");
+		//else assert(0, "Not implemented");
 	}
 	else
 	{

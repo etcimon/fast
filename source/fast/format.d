@@ -106,9 +106,9 @@ template decDigits(T) if (isFloatingPoint!T)
 
 enum decChars(T) = decDigits!T + isSigned!T;
 
-@safe pure nothrow short decCharsVal(T)(T v) if (isIntegral!T) {
-	int maxsize = 10;
-	short digits = 1;
+@safe pure nothrow size_t decCharsVal(T)(T v) if (isIntegral!T && !isFloatingPoint!T) {
+	ulong maxsize = 10;
+	size_t digits = 1;
 	if (v < 0) {
 		digits = 2;
 		v *= -1;
@@ -125,8 +125,8 @@ enum decChars(T) = decDigits!T + isSigned!T;
 	return decChars!T;
 }
 
-@safe nothrow short decCharsVal(T)(T v) if (isFloatingPoint!T) {
-	int maxsize = 10;
+@safe nothrow size_t decCharsVal(T)(T v) if (isFloatingPoint!T) {
+	/*int maxsize = 10;
 	uint u = cast(uint) (v < 0 ? -v : v);
 	T dec = (v < 0 ? (-v) : (v)) - u;
 	short digits = 1;
@@ -156,7 +156,8 @@ enum decChars(T) = decDigits!T + isSigned!T;
 		digits++;
 	}
 
-	return digits;
+	return digits;*/
+	return decStr(v).length;
 }
 
 @safe pure nothrow @nogc
@@ -291,6 +292,18 @@ enum spaceRequirements(string format, Args...)() if (allSatisfy!(hasKnownSpaceRe
 	return sum;
 }
 
+ptrdiff_t indexOf(T)(T s, string arr) pure nothrow {
+	ptrdiff_t i;
+	foreach (const c2; s)
+	{
+		foreach (immutable c1; arr) {
+			if (c1 == c2)
+				return i;
+		}
+		++i;
+	}
+	return -1;
+}
 
 ptrdiff_t indexOf(T)(T s, char c) pure nothrow {
 	immutable c1 = c;
@@ -504,22 +517,28 @@ void formattedWriteItem(string format, T)(ref char* buffer, T t)
 		buffer += char.sizeof;
 	}
 	else {
-		ptrdiff_t quote_idx = str.indexOf('"');
+		ptrdiff_t escape_idx = str.indexOf("\"\t\r\n\\\b\0");
 		auto str_ptr = str.ptr;
 		size_t remaining = str.length;
-		while (quote_idx > -1) {
-			llvm_memcpy(buffer, str_ptr, quote_idx);
-			buffer += quote_idx;
-			*buffer = '\\';
-			buffer++;
-			str_ptr += quote_idx;
-			remaining -= quote_idx;
-			quote_idx = indexOf(buffer[0 .. str.length - quote_idx],'"');
+		while (escape_idx > -1) {
+			llvm_memcpy(buffer, str_ptr, escape_idx);
+			buffer += escape_idx;
+			str_ptr += escape_idx;
+			remaining -= escape_idx;
+			char c = *str_ptr;
+			if (c == '\t') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = 't'; }
+			else if (c == '\b') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = 'b'; }
+			else if (c == '\n') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = 'n'; }
+			else if (c == '\r') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = 'r'; }
+			else if (c == '"') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = '"'; }
+			else if (c == '\\') { str_ptr++; escape_idx++; remaining--; *(buffer++) = '\\'; *(buffer++) = '\\'; }
+			else if (c == 0x00) { str_ptr++; escape_idx++; remaining--; *(buffer++) = '?'; }
+			
+			escape_idx = indexOf(str_ptr[0 .. str.length - escape_idx],"\"\t\r\n\\\b\0");
 		}
 		llvm_memcpy( buffer, str_ptr, remaining );
 		buffer += remaining;
 	}
-	
 }
 
 

@@ -138,7 +138,7 @@ struct JsonParserState {
  * 
  **************************************/
 struct Json(ALLOC, uint vl = validateUsed, bool validateUtf8 = vl > trustedSource)
-	if ((vl > trustedSource || !validateUtf8) && ALLOC.stringof == "PoolStackAllocator")
+	if ((vl > trustedSource || !validateUtf8))
 {
 nothrow:
 @trusted:
@@ -184,6 +184,10 @@ public:
 		this(cast(const(char)[]) text, simdPrep);
 	}
 
+	~this() {
+		if (m_buffer.length > 0)
+			m_alloc.deallocate(m_buffer);
+	}
 
 	/*******************************************************************************
 	 * 
@@ -1205,7 +1209,7 @@ public:
 		{
 			skipOnePlusWhitespace!false();
 			static if (isValidating)
-				if (*m_text != '\0')
+				if (*m_text != '\0') //
 					handleError("Expected end of JSON.");
 		}
 		else skipOnePlusWhitespace!skipAllInter();
@@ -1395,7 +1399,7 @@ public:
 		}
 
 		~this()
-		{
+		{	
 			static if (isValidateAll)
 			{
 				if (*json.m_text != '}')
@@ -1482,12 +1486,10 @@ size_t serializationLength(T)(T t) nothrow @trusted
 		enum isPublic = __traits(getProtection, sym) == "public";
 		static assert(!hasUDA!(sym, serialize) || (isPublic && hasUDA!(sym, serialize)), "Protected field has @serialize UDA");
 		static if (isPublic && hasUDA!(sym, serialize)) {
-			alias ChildType = typeof(sym);
-			enum i = sym.stringof;
-			len += i.length;
-			if (offset > 1) len += 4; // ,"":
+			if (len > 1) len += 4; // ,"":
 			else len += 3; // "":
-			
+			enum i = sym.stringof;
+			len += i.length;				
 			
 			static if (isPointer!(typeof(sym))) 
 				len += serializationLength(*__traits(getMember, t, i));
@@ -1507,7 +1509,7 @@ size_t serializationLength(T)(T t) nothrow @trusted
 	size_t len;
 	len++; // {
 	foreach(key, ref val; t) {
-		if (offset > 1) 
+		if (len > 1) 
 			len++; // ,	
 
 		static if (isPointer!(typeof(key))) 
@@ -1548,30 +1550,56 @@ size_t serializationLength(T)(T t) nothrow @trusted
 }
 
 private size_t serializationLength(T)(T t) nothrow @trusted
-	if (isIntegral!T)
+	if (isIntegral!T && !isFloatingPoint!T)
 {
 	import fast.format : decCharsVal;
+	
+	char[8] buf;
+	char* bufptr = buf.ptr;
+	auto ret = bufptr.formattedWrite!"%d"(decCharsVal(t));
+
 	return decCharsVal(t);
+}
+private bool hasEscape(char c) {
+	if ((c <= 0x1F && c > 0xC) || (c > 0x1F && c != '"' && c != '\\')) 
+		return false;
+	else if (c == '\t') return true;
+	else if (c == '\b') return true;
+	else if (c == '\n') return true;
+	else if (c == '\r') return true;
+	else if (c == '"') return true;
+	else if (c == '\\') return true;
+	else return false; // '?'
 }
 
 private size_t serializationLength(T)(T t) nothrow @trusted
 	if (isSomeString!T)
 {	
-	import std.string : count;
-	return t.count('"') + t.length;
+	import fast.format : formattedWrite, indexOf;
+	size_t i;
+	ptrdiff_t idx;
+	T substr = t;
+	do {
+		idx = substr.indexOf("\"\t\r\n\\\b");
+		if (idx > -1) {
+			i++;
+			substr = substr[idx + 1 .. $];
+		}
+	} while(idx > -1);
+	return i + (cast(void[])t).length + 2; // escapes + strlen + quotes
 }
 
 private size_t serializationLength(T)(T t) nothrow @trusted
 	if (isFloatingPoint!T)
 {	
-	import fast.format : decStr;
-	return decStr(t).length; // todo: optimize this
+	import fast.format : decCharsVal;
+	return decCharsVal(t); // todo: optimize this
 }
 
 private size_t serializationLength(T)(T t) nothrow @trusted
 	if (isBoolean!T)
 {	
-	return t ? 4 : 5;
+	return t ? 4 : 5; // true : false
 }
 
 char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
@@ -1665,7 +1693,7 @@ private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
 }
 
 private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
-	if (isIntegral!T)
+	if (isIntegral!T && !isFloatingPoint!T)
 {	
 	char[] written = formattedWrite!"%d"(buf.ptr, t);
 	return buf[0 .. written.length];

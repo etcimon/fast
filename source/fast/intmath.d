@@ -17,8 +17,33 @@ module fast.intmath;
 import fast.internal.helpers;
 import fast.internal.sysdef;
 import core.checkedint;
+import ldc.attributes;
 
+uint mulu()(uint x, uint y, ref bool overflow)
+{
+    immutable ulong r = ulong(x) * ulong(y);
+    if (r >> 32)
+        overflow = true;
+    return cast(uint) r;
+}
 
-	// DMD is already faster than my ASM code above, no need to improve. Good job Walter et al.
-	//import core.checkedint;
-	alias mulu = core.checkedint.mulu;
+@(ldc.attributes.optStrategy("none"))
+ulong mulu()(ulong x, uint y, ref bool overflow)
+{
+    ulong r = x * y;
+    if (x >> 32 &&
+            r / x != y) 
+        overflow = true;
+    return r;
+}
+
+@(ldc.attributes.optStrategy("none"))
+ulong mulu()(ulong x, ulong y, ref bool overflow)
+{
+    immutable ulong r = x * y;
+    if ((x | y) >> 32 &&
+            x &&
+            r / x != y) // error __multi3 not defined when optimized
+        overflow = true;
+    return r;
+}
