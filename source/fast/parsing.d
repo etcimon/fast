@@ -16,7 +16,9 @@ module fast.parsing;
 
 import std.traits;
 import fast.internal.sysdef;
+import std.array : staticArray;
 
+static enum isAMD64 = false;
 
 /+
  ╔══════════════════════════════════════════════════════════════════════════════
@@ -126,7 +128,7 @@ struct NumberOptions
  *   encountered.
  *
  **************************************/
-@nogc pure nothrow
+@nogc nothrow
 bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNumeric!N)
 {
 	import fast.internal.helpers;
@@ -149,17 +151,15 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 	static if (isFloatingPoint!N)
 	{
 		enum significandRightShift = 8 * U.sizeof - N.mant_dig + 1;
-		enum lastSignificandBit = U(2) << 8 * U.sizeof - N.mant_dig;
+		//enum lastSignificandBit = U(2) << 8 * U.sizeof - N.mant_dig;
 		enum firstFractionBit   = U(1) << 8 * U.sizeof - N.mant_dig;
-		enum remainderBits = U.max - N.mant_dig + 1;
+		//enum remainderBits = U.max - N.mant_dig + 1;
 		enum expShift = N.mant_dig - 1;
 		enum expBias = N.max_exp - 1;
 	}
-	
+
 	static if (isFloatingPoint!N)
 	{
-		alias pow5Max = PowData!(U, 5).powMax;
-		alias pow5    = PowData!(U, 5).pows;
 
 		// Largest power of 10 that fits into a float of type N. The factor 5 here is correct, as the 2s
 		// go in as an increment in the exponent, that is neglectable here.
@@ -168,13 +168,48 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 			while (v <= ((U(1) << N.mant_dig) - 1) / 5) { v *= 5; exp++; }
 			return exp;
 		}();
-
-		static immutable N[pow10MaxF] pow10F = N(10).recurrence!((a, n) => 10 * a[n-1]).take(pow10MaxF).array;
+		__gshared static bool pow10Fb = false;
+		__gshared static N[pow10MaxF] pow10F;
+		if (!pow10Fb) {
+			int i = 0;
+			foreach (v; N(10).recurrence!((a, n) => 10 * a[n-1]).take(pow10MaxF)) {
+				pow10F[i++] = v;
+			}
+			pow10Fb = true;
+		}
+		enum pow5Max = {
+			U v = 1; uint exp;
+			while (v <= (U.max / 5)) { v *= 5; exp++; }
+			return exp;
+		}();
+		__gshared static bool pow5b = false;
+		__gshared static U[pow5Max] pow5;
+		
+		if (!pow5b) {
+			int i = 0;
+			foreach (v; U(5).recurrence!((a, n) => 5 * a[n-1]).take(pow5Max)) {
+				pow5[i++] = v;
+			}
+			pow5b = true;
+		}
 	}
 	else
 	{
-		alias pow10Max = PowData!(U, 10).powMax;
-		alias pow10    = PowData!(U, 10).pows;
+		enum pow10Max = {
+			U v = 1; uint exp;
+			while (v <= (U.max / 10)) { v *= 10; exp++; }
+			return exp;
+		}();
+		__gshared static bool pow10b = false;
+		
+		__gshared static U[pow10Max] pow10;
+		if (!pow10b) {
+			int i = 0;
+			foreach (v; U(10).recurrence!((a, n) => 10 * a[n-1]).take(pow10Max)) {
+				pow10[i++] = v;
+			}
+			pow10b = true;
+		}
 	}
 
 	const(char)* p = str;
@@ -229,8 +264,8 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 		point = ++p;
 		digit = *p - '0';
 		if (digit > 9)
-			return false;
-		do
+			digit = 0;
+		else do
 		{
 			if (significand > canHoldOneMoreDigit)
 				goto BigMantissa;
@@ -368,9 +403,9 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 				str = p;
 				return true;
 			}
-			else assert(0, "Not implemented");
+			//else assert(0, "Not implemented");
 		}
-		else assert(0, "Not implemented");
+		//else assert(0, "Not implemented");
 	}
 	else
 	{
@@ -441,7 +476,7 @@ private template PowData(U, U base)
 	enum powMax = { U v = 1; uint exp; while (v <= U.max / base) { v *= base; exp++; } return exp; }();
 	
 	// Table of powers of `base`. (We skip base^0)
-	static immutable U[powMax] pows = base.recurrence!((a, n) => base * a[n-1]).take(powMax).array;
+	static immutable U[powMax] pows = base.recurrence!((a, n) => base * a[n-1]).take(powMax);
 }
 
 
@@ -536,7 +571,7 @@ body
 	import std.algorithm, std.range;
 	
 	static immutable byte[256] classify =
-		iota(256).map!(c => terminators.canFind(c) ? byte(-1) : special.canFind(c) ? 1 : 0).array;
+		iota(256).map!(c => terminators.canFind(c) ? byte(-1) : special.canFind(c) ? 1 : 0).staticArray;
 	
 	immutable(C)* p_key = key.ptr;
 	immutable C* e_key = p_key + key.length;
@@ -594,14 +629,34 @@ void fixedStringCompareSSE4()
 @forceinline @nogc nothrow pure
 void seekToAnyOf(string cs)(ref const(char)* p)
 {
-	p.vpcmpistri!(char, sanitizeChars(cs), Operation.equalAnyElem);
+	bool found = false;
+	while (*p) {
+		foreach(c; cs) {
+			if (c == *p) {
+				found = true;
+				break;
+			}
+		}
+		if (found) break; else p++;
+	}
+	//p.vpcmpistri!(char, sanitizeChars(cs), Operation.equalAnyElem);
 }
 
 
-@forceinline @nogc nothrow pure
+@forceinline nothrow
 void seekToRanges(string cs)(ref const(char)* p)
 {
-	p.vpcmpistri!(char, sanitizeRanges(cs), Operation.inRanges);
+	bool found = false;
+	while (*p) {
+		for(int i = 0; i < cs.length; i+=2) {
+			if (cs[i] <= *p && cs[i+1] >= *p) {
+				found = true;
+				break;
+			}
+		}
+		if (found) break; else p++;
+	}
+	//p.vpcmpistri!(char, sanitizeRanges(cs), Operation.inRanges);
 }
 
 
@@ -618,8 +673,15 @@ void seekToRanges(string cs)(ref const(char)* p)
 @forceinline @nogc nothrow pure
 void seekPast(char c)(ref const(char)* p)
 {
-	p.vpcmpistri!(char, c.repeat(16).to!string, Operation.equalElem);
-	p++;
+	while (*p){
+		if (c == *p) {
+			p++;
+			break;
+		}
+		else p++;
+	}
+	//p.vpcmpistri!(char, c.repeat(16).to!string, Operation.equalElem);
+	
 }
 
 
@@ -638,7 +700,18 @@ void seekPast(char c)(ref const(char)* p)
 @forceinline @nogc nothrow pure
 void skipCharRanges(string cs)(ref const(char)* p)
 {
-	p.vpcmpistri!(char, cs, Operation.inRanges, Polarity.negate);
+	import std.range : chunks;
+	while (*p) {
+		bool found = false;
+		for(int i = 0; i < cs.length; i+=2) {
+			if (cs[i] <= *p && cs[i+1] >= *p) {
+				found = true;
+				break;
+			}
+		}
+		if (found) p++; else break;
+	}
+	//p.vpcmpistri!(char, cs, Operation.inRanges, Polarity.negate);
 }
 
 
@@ -654,7 +727,18 @@ void skipCharRanges(string cs)(ref const(char)* p)
 @forceinline @nogc nothrow pure
 void skipAllOf(string cs)(ref const(char)* p)
 { 
-	p.vpcmpistri!(char, cs, Operation.equalAnyElem, Polarity.negate);
+	while (*p) {
+		bool found = false;
+		foreach(c; cs) {
+			if (c == *p) {
+				found = true;
+				break;
+			}
+		}
+		if (found) p++; else break;
+	}
+		
+	//p.vpcmpistri!(char, cs, Operation.equalAnyElem, Polarity.negate);
 }
 
 
@@ -690,7 +774,11 @@ void skipAsciiWhitespace(ref const(char)* p)
 void skipToNextLine(ref const(char)* p)
 {
 	// Stop at next \r, \n or \0.
-	p.vpcmpistri!(char, "\x01\x09\x0B\x0C\x0E\xFF", Operation.inRanges, Polarity.negate);
+	enum cmp_to = "\x09\x0B\x0C\x0E";
+	while (*p && (*p != cmp_to[0] && *p != cmp_to[1] && *p != cmp_to[2] && *p != cmp_to[3]) )
+		p++;
+
+	//p.vpcmpistri!(char, "\x01\x09\x0B\x0C\x0E\xFF", Operation.inRanges, Polarity.negate);
 	if (p[0] == '\r') p++;
 	if (p[0] == '\n') p++;
 }
@@ -704,10 +792,7 @@ private enum sanitizeChars(string cs)
 	foreach (c; cs) if (!c) { has0 = true; break; }
 	assert(has0, "Parsers are required to also check for \0 when looking for specific chars.");
 	
-	char[] result;
-	foreach (i; 1 .. 256) foreach (c; cs) if (i == c)
-	result ~= c;
-	return result.assumeUnique;
+	return cs;
 }
 
 
@@ -718,167 +803,6 @@ private enum sanitizeRanges(string cs)
 	bool has0 = false;
 	foreach (i; 0 .. cs.length / 2) if (!cs[2*i]) { has0 = true; break; }
 	assert(has0, "Parsers are required to also check for \0 when looking for specific chars.");
-	
-	char[] result;
-	foreach (i; 0 .. cs.length / 2)
-	{
-		if (cs[2*i])
-			result ~= cs[2*i .. 2*i+2];
-		else if (cs[2*i+1])
-			result ~= ['\x01', cs[2*i+1]];
-	}
-	return result.assumeUnique;
+	return cs;
 }
 
-
-private enum Operation
-{
-	equalAnyElem = 0b0_00_00_00,
-	inRanges     = 0b0_00_01_00,
-	equalElem    = 0b0_00_10_00,
-	substrPos    = 0b0_00_11_00,
-}
-
-
-private enum Polarity
-{
-	keep        = 0b0_00_00_00,
-	negate      = 0b0_01_00_00,
-	negateValid = 0b0_11_00_00,
-}
-
-
-@forceinline @nogc nothrow pure
-private void vpcmpistri(C, immutable(C[]) cs, Operation op, Polarity pol = Polarity.keep, bool lastIndex = false)
-	(ref const(char)* p)
-		if (is(C == char) || is(C == ubyte) || is(C == wchar) || is(C == ushort) || is(C == byte) || is(C == short))
-{
-	import fast.internal.helpers;
-
-	// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53712
-	static if (is(C == char) || is(C == ubyte))
-		enum ct = 0b00;
-	else static if (is(C == wchar) || is(C == ushort))
-		enum ct = 0b01;
-	else static if (is(C == byte))
-		enum ct = 0b10;
-	else
-		enum ct = 0b11;
-	
-	enum mode = ct | op | pol | (!!lastIndex << 6);
-	
-	version (X86_64)
-		enum creg = "rcx";
-	else version (X86)
-		enum creg = "ecx";
-	else static assert(0, "Not implemented");
-	
-	version (LDC)
-	{
-		import ldc.llvmasm;
-		
-		p = __asm!(const(char*))("
-			1:
-			pcmpistri $2, ($1), $3
-			add       $$16, $1
-			cmp       $$16, %ecx
-			je        1b
-			sub       $$16, $1
-			add       %" ~ creg ~ ", $1
-			", "=r,0,K,x,~{ecx}", p, mode, SIMDFromString!cs);
-	}
-	else version (GNU)
-	{
-		asm { "
-			1:
-			pcmpistri %2, (%1), %3
-			add       $16, %1
-			cmp       $16, %%ecx
-			je        1b
-			sub       $16, %1
-			add       %%" ~ creg ~ ", %1
-			" : "=r" p : "0" p, "K" mode, "x" SIMDFromString!cs : "ecx"; }
-	}
-	else
-	{
-		alias csXMM = SIMDFromString!cs;
-		version (D_InlineAsm_X86_64)
-		{
-			version (Posix)
-			{
-				version (D_PIC) asm @nogc pure nothrow
-				{
-					naked;
-					lea         RAX, csXMM;
-					mov         RAX, [RAX];
-					movdqu      XMM0, [RAX];
-					mov         RAX, [RDI];
-				L1:
-					vpcmpistri  XMM0, [RAX], mode;
-					add         RAX, 16;
-					cmp         ECX, 16;
-					je          L1;
-					sub         RAX, 16;
-					add         RAX, RCX;
-					mov         [RDI], RAX;
-					ret;
-				}
-				else asm @nogc pure nothrow
-				{
-					naked;
-					movdqa      XMM0, csXMM;
-					mov         RAX, [RDI];
-				L1:
-					vpcmpistri  XMM0, [RAX], mode;
-					add         RAX, 16;
-					cmp         ECX, 16;
-					je          L1;
-					sub         RAX, 16;
-					add         RAX, RCX;
-					mov         [RDI], RAX;
-					ret;
-				}
-			}
-			else static assert(0, "Not implemented");
-		}
-		else version (D_InlineAsm_X86)
-		{
-			version (Posix)
-			{
-				version (D_PIC) asm @nogc pure nothrow
-				{
-					naked;
-					mov         EDX, CS:csXMM[EBX];
-					movdqu      XMM0, [EDX];
-					mov         EDX, [EAX];
-				L1:
-					vpcmpistri  XMM0, [EDX], mode;
-					add         EDX, 16;
-					cmp         ECX, 16;
-					je          L1;
-					sub         EDX, 16;
-					add         EDX, ECX;
-					mov         [EAX], EDX;
-					ret;
-				}
-				else asm @nogc pure nothrow
-				{
-					naked;
-					movdqa      XMM0, csXMM;
-					mov         EDX, [EAX];
-				L1:
-					vpcmpistri  XMM0, [EDX], mode;
-					add         EDX, 16;
-					cmp         ECX, 16;
-					je          L1;
-					sub         EDX, 16;
-					add         EDX, ECX;
-					mov         [EAX], EDX;
-					ret;
-				}
-			}
-			else static assert(0, "Not implemented");
-		}
-		else static assert(0, "Not implemented");
-	}
-}

@@ -16,64 +16,34 @@ module fast.intmath;
 
 import fast.internal.helpers;
 import fast.internal.sysdef;
+import core.checkedint;
+import ldc.attributes;
 
+uint mulu()(uint x, uint y, ref bool overflow)
+{
+    immutable ulong r = ulong(x) * ulong(y);
+    if (r >> 32)
+        overflow = true;
+    return cast(uint) r;
+}
 
-version (LDC)
+@(ldc.attributes.optStrategy("none"))
+ulong mulu()(ulong x, uint y, ref bool overflow)
 {
-	@safe @nogc pure nothrow
-	ulong mulu(ulong x, ulong y, ref bool overflow)
-	{
-		import ldc.intrinsics;
-		auto res = llvm_umul_with_overflow(x, y);
-		overflow = res.overflow;
-		return res.result;
-	}
+    ulong r = x * y;
+    if (x >> 32 &&
+            r / x != y) 
+        overflow = true;
+    return r;
 }
-else static if (isPosix && isGDC && (isAMD64 || isX86))
+
+@(ldc.attributes.optStrategy("none"))
+ulong mulu()(ulong x, ulong y, ref bool overflow)
 {
-	@nogc pure nothrow
-	ulong mulu(ulong x, ulong y, ref bool overflow)
-	{
-		version (GNU)
-		{
-			ulong lo;
-			version (X86) asm { "
-					cmp $0, 4+%2
-					je 1f
-					cmp $0, 4%3
-					je 1f
-					movb $1, %1
-					1:
-					mov 4+%2, %%eax
-					mull %3
-					jno 2f
-					movb $1, %1
-					2:
-					mov %%eax, %%ecx
-					mov %2, %%eax
-					mull 4%3
-					jno 3f
-					movb $1, %1
-					3:
-					add %%eax, %%ecx
-					jno 4f
-					movb $1, %1
-					4:
-					mov %2, %%eax
-					mull %3
-					add %%ecx, %%edx
-					jnc 5f
-					movb $1, %1
-					5:
-					" : "=&A" lo, "+*m" overflow : "m" x, "m" y : "ecx"; }
-			else asm { "mul %3\njno 1f\nmovb $1, %1\n1:\n" : "=a" lo, "+*m" overflow : "a" x, "r" y : "rdx"; }
-			return lo;
-		}
-	}
-}
-else
-{
-	// DMD is already faster than my ASM code above, no need to improve. Good job Walter et al.
-	import core.checkedint;
-	alias mulu = core.checkedint.mulu;
+    immutable ulong r = x * y;
+    if ((x | y) >> 32 &&
+            x &&
+            r / x != y) // error __multi3 not defined when optimized
+        overflow = true;
+    return r;
 }

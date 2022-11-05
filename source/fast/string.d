@@ -14,14 +14,12 @@ module fast.string;
 
 import core.bitop;
 import core.simd;
-import core.stdc.stdlib;
+//import core.stdc.stdlib;
 
 version (GNU) import gcc.attribute;
 
 import std.algorithm;
 import std.range;
-import std.stdio;
-import std.string;
 import std.traits;
 
 import fast.buffer;
@@ -68,10 +66,10 @@ bool split(string match)(scope inout(char[]) str, ref inout(char)[] before, ref 
  */
 char split(string match)(scope inout(char*) ptr, ref inout(char)[] before, ref inout(char)* after)
 {
-	immutable pos = SimdMatcher!match.find(str.ptr);
-	before = ptr[0 .. pos];
-	after = ptr + pos + 1;
-	return ptr[pos];
+	auto pos = SimdMatcher!match.find(ptr);
+	before = ptr[0 .. pos - ptr];
+	after = pos + 1;
+	return *pos;
 }
 
 
@@ -157,185 +155,6 @@ bool keyword1(string key)(in char[] str,
 }
 
 
-bool keyword2(string key)(in char[] str,
-	scope bool function(ref immutable(char)* key, ref const(char)* str) mismatcher = null)
-{
-	version (LDC) import ldc.gccbuiltins_x86;
-	
-	/* Since SIMD typically works with word aligned data, we duplicate 'key' for every possible start of 'str' when
-	 * loaded from an aligned memory address where the first character appears 0 to Word.sizeof bytes into the SIMD
-	 * register.
-	 * For 16-byte SIMD we could just create an array of 16 strings with 0 to 15 padding bytes in front and some after,
-	 * but we can be more compact with at most 16 wasted padding bytes. Since machine registers are powers of 2, if we
-	 * pad all keys to an odd length and repeat them 16 times we get a sequence with the following properties:
-	 * - It consists of as many SIMD words as the key is long.
-	 * - All 16 shift offsets of the key are contained in the SIMD words due to the periodicity introduced by using
-	 *   disjunct prime factors for the key length and the SIMD word size.
-	 * Interpreted as an array of SIMD words, it can be indexed with the desired shift multiplied by a constant factor
-	 * and taken modulo the SIMD array length to use the periodicity. The constant factor is the smallest value that
-	 * when multiplied with the key length ends up at a SIMD word boundary + 1 (the first shift).
-	 */
-	
-	// 'key' length rounded up to next odd value is the number of SIMD words we need.
-	enum keyLenOdd = uint(key.length | 1); // TODO: uint or implicit type ?
-	align(16) static immutable char[keyLenOdd * Word.sizeof] keyData = key.representation
-		.chain(ubyte(0x20).repeat(keyLenOdd - key.length)).cycle.take(keyLenOdd * Word.sizeof).array;
-	align(16) static immutable char[Word.sizeof] dquote = '"';
-	align(16) static immutable char[Word.sizeof] bslash = '\\';
-	enum mul = { uint result = 0; while ((++result * Word.sizeof + 1) % keyLenOdd) {} return result; }();
-	
-	const(char)* strPtr = str.ptr;
-	immutable(char)* keyPtr = keyData.ptr;
-	auto bsWord = *cast(immutable Word*) &bslash;
-	auto dqWord = *cast(immutable Word*) &dquote;
-	
-	do
-	{
-		//		writeln("enter loop");
-		// Calculate SSE word boundary before 'str'
-		size_t strOff = cast(size_t) strPtr % Word.sizeof;
-		Word strWord = *cast(Word*) (strPtr - strOff);
-		size_t keyPos = keyPtr - keyData.ptr;
-		size_t keyOff = (strOff - keyPos) % Word.sizeof;
-		Word keyWord = (cast(Word*) keyData.ptr)[keyOff * mul % keyLenOdd + (keyOff + keyPos) / Word.sizeof];
-		
-		// Escape seqences have priority. 'key' may contain backslashes as part of the text, but in 'str' a backslash
-		// at the same position is actually the begin of the escape sequence "\\".
-		Word bsMask = strWord.maskEqual(bsWord);
-		// If after processing backslashes there is a double-quote in 'str' we must not match it with a double-quote in
-		// 'key', since it is the delimiter of 'str'.
-		Word dqMask = strWord.maskEqual(dqWord);
-		// How many bytes of 'key' and 'str' match in our 'Word' ?
-		Word missMask = strWord.maskNotEqual(keyWord);
-		// Merge mismatch, backslash and double-quote masks and move them into a non-SSE register.
-		Word allMasks = or(missMask, or(bsMask, dqMask));
-		uint skip = bsf((__builtin_ia32_pmovmskb128(allMasks) | 1 << Word.sizeof) >> strOff);
-		//		writeln(keyPtr[0 .. 5]);
-		//		writeln(strPtr[0 .. 5]);
-		//		writeln(skip);
-		strPtr += skip;
-		keyPtr += skip;
-		
-		// Have we matched enough bytes to reach the end of 'key' ?
-		if (keyPtr - keyData.ptr >= key.length)
-			return true;
-		
-		// When we find a mismatch between 'key' and 'str', we try to call a provided helper function.
-		// It may decode escape sequences in 'str' and recover from the state.
-		// If that fails we accept the mismatch and return 'false'.
-		//		writefln("Key: %s, Str %s", *keyPtr, *strPtr);
-		//		const(char*) strPtrOld = strPtr;
-		//		immutable(char*) keyPtrOld = keyPtr;
-		if (strOff + skip < Word.sizeof && !(mismatcher && mismatcher(keyPtr, strPtr)))
-		{
-			//			writefln("Key: %s, Str %s", *keyPtr, *strPtr);
-			return false;
-		}
-		//		writefln("Key: %s, Str %s", *keyPtr, *strPtr);
-	}
-	while (keyPtr - keyData.ptr < key.length);
-	
-	return true;
-}
-
-
-bool keyword3(string key)(in char[] str, bool function(ref immutable(char)*, ref const(char)*) mismatcher = null)
-{
-	version (LDC) import ldc.gccbuiltins_x86;
-	version (GNU) import gcc.builtins;
-
-	/* Since SIMD typically works with word aligned data, we duplicate 'key' for every possible start of 'str' when
-	 * loaded from an aligned memory address where the first character appears 0 to Word.sizeof bytes into the SIMD
-	 * register.
-	 * For 16-byte SIMD we could just create an array of 16 strings with 0 to 15 padding bytes in front and some after,
-	 * but we can be more compact with at most 16 wasted padding bytes. Since machine registers are powers of 2, if we
-	 * pad all keys to an odd length and repeat them 16 times we get a sequence with the following properties:
-	 * - It consists of as many SIMD words as the key is long.
-	 * - All 16 shift offsets of the key are contained in the SIMD words due to the periodicity introduced by using
-	 *   disjunct prime factors for the key length and the SIMD word size.
-	 * Interpreted as an array of SIMD words, it can be indexed with the desired shift multiplied by a constant factor
-	 * and taken modulo the SIMD array length to use the periodicity. The constant factor is the smallest value that
-	 * when multiplied with the key length ends up at a SIMD word boundary + 1 (the first shift).
-	 */
-	
-	// 'key' length rounded up to next odd value is the number of SIMD words we need.
-	enum keyLenOdd = uint(key.length | 1); // TODO: uint or implicit type ?
-	align(16) static immutable char[keyLenOdd * Word.sizeof] keyData = key.representation
-		.chain(ubyte(0x20).repeat(keyLenOdd - key.length)).cycle.take(keyLenOdd * Word.sizeof).array;
-	align(16) static immutable char[Word.sizeof] dqbs = `\"""""""""""""""`;
-	enum mul = { uint result = 0; while ((++result * Word.sizeof + 1) % keyLenOdd) {} return result; }();
-
-	// Calculate SSE word boundary before 'str'
-	uint off = cast(uint) str.ptr % Word.sizeof;
-	// SSE aligned pointer <= 'str.ptr'.
-	auto strPtr = cast(const(Word)*) (str.ptr - off);
-	auto keyPtr = cast(immutable(Word)*) keyData.ptr + off * mul % keyLenOdd;
-	auto keyStart = cast(immutable(char)*) keyPtr + off;
-	Word strWord = *strPtr;
-
-LoadKey:
-	auto keyEnd = keyStart + key.length;
-
-Compare:
-	// Get bitmask of special characters in 'str'.
-	uint escMask = getScalar(cast(int4) __builtin_ia32_pcmpistrm128(*cast(Word*) &dqbs, strWord, 0b_0_00_00_00));
-//	writeln("Called a");
-	// Get bitmask of characters from 'key' and 'str' that don't match.
-	uint missMask = getScalar(cast(int4) __builtin_ia32_pcmpistrm128(*keyPtr, strWord, 0b_0_01_10_00));
-//	writeln("Called b");
-	// Create a merged mask for both and an additional bit at position 16, serving as a delimiter for 'bsf'.
-	uint mask = (escMask | missMask) & (uint.max << off);
-
-	// No bit set means all 16 bytes are equal and there are no escape characters. That's as good as it gets.
-	if (!mask)
-	{
-		// Jump forward by a word size and see if we successfully compared all bytes to the end of our 'key'.
-		keyPtr += 16;
-		if (cast(immutable(char)*) keyPtr >= keyEnd)
-			return true;
-		// Otherwise continue with the next set of 16 bytes.
-		strPtr += 16;
-		off = 0;
-		goto Compare;
-	}
-
-	// One of two cases ...
-	off = bsf(mask);
-
-	// 1) Did the mismatch occur past the end of 'key' ? Then we compared succesfully.
-	if (cast(immutable(char)*) keyPtr + off >= keyEnd)
-		return true;
-
-	// 2) It must be a special character or actual mismatch, let 'mismatcher' decide.
-//	writefln("Skipping: %s", (cast(const(char)*) strPtr)[0 .. off]);
-	auto strChP = cast(const(char)*) strPtr + off;
-	auto strChPOld = strChP;
-	auto keyChP = cast(immutable(char)*) keyPtr + off;
-	bool goodToGo = mismatcher(keyChP, strChP);
-
-//	writefln("Mismatcher used %s key chars, %s str chars and returned: %s", keyAdd, strAdd, goodToGo);
-	if (keyChP >= keyEnd)
-		return true;
-	if (!goodToGo)
-		return false;
-
-	// Arriving here we just decoded an escape sequence and have to adjust our pointers.
-	auto keyPos = keyChP - keyStart;
-	off += strChP - strChPOld;
-	if (off >= 16)
-	{
-		strPtr += off / 16;
-		strWord = *strPtr;
-		off %= 16;
-	}
-	auto baseOff = (off - keyPos) & 15;
-	keyPtr = cast(immutable(Word)*) keyData.ptr + baseOff * mul % keyLenOdd;
-	keyStart = cast(immutable(char)*) keyPtr + baseOff;
-	keyPtr += (baseOff + keyPos) / 16;
-	goto LoadKey;
-}
-
-
 size_t equalLength(scope inout(char[]) a, scope inout(char[]) b)
 {
 	return 0;
@@ -358,7 +177,7 @@ size_t equalLength(scope inout(char[]) a, scope inout(char[]) b)
 nothrow @nogc
 template concat(Strs...)
 {
-	import core.stdc.string : memcpy;
+	//import core.stdc.string : memcpy;
 	import fast.internal.helpers;
 
 	enum allocExpr = ctfeJoin!(Strs.length)("Strs[%s].length", "+") ~ "+1";
@@ -370,10 +189,11 @@ template concat(Strs...)
 			(cast(char*) (buffer is null ? malloc(length) : buffer))[0 .. length - 1],
 			buffer is null);
 
+		import llvm.intrinsics;
 		char* p = result.ptr;
 		foreach (const(char[]) str; Strs)
 		{
-			memcpy (p, str.ptr, str.length);
+			llvm_memcpy (p, str.ptr, str.length);
 			p += str.length;
 		}
 		*p = '\0';
@@ -389,7 +209,6 @@ private:
 template SimdMatcher(string match)
 {
 	import core.simd;
-	import std.string;
 	import fast.internal.sysdef;
 	
 	static if (match != strip(match)) {
@@ -430,7 +249,7 @@ template SimdMatcher(string match)
 			
 			size_t find(scope inout(char*) b, scope inout(char*) e) pure nothrow @nogc
 			{
-				import core.stdc.string;
+				//import core.stdc.string;
 				import fast.internal.helpers;
 
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
@@ -459,7 +278,7 @@ template SimdMatcher(string match)
 			
 			inout(char)* find(scope inout(char*) b) pure nothrow @nogc
 			{
-				import core.stdc.string;
+				//import core.stdc.string;
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar && singleChar == '\0') {
 					return strlen(b) + b;
@@ -483,7 +302,7 @@ template SimdMatcher(string match)
 		}
 		else
 		{
-			import core.stdc.string, core.simd;
+			//import core.stdc.string, core.simd;
 			import std.simd;
 			import fast.internal.helpers;
 			
@@ -497,7 +316,7 @@ template SimdMatcher(string match)
 			{
 				// catch "strlen" and "memchr" like calls, that are highly optimized compiler built-ins.
 				static if (isSingleChar) {
-					return memchr(b, singleChar, e - b) - b;
+					return (cast(inout(char*))memchr(b, singleChar, e - b)) - b;
 				} else {
 					if (b >= e) return 0;
 					
@@ -547,7 +366,7 @@ template SimdMatcher(string match)
 		
 		enum genMatchCode(bool sse)(string var)
 		{
-			import std.ascii, std.exception;
+			import std.exception;
 			
 			struct Code {
 				string code;

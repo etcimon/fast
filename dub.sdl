@@ -9,25 +9,7 @@ excludedSourceFiles "source/docs/*.d" "source/unicode/*.d"
 targetPath "generated"
 
 configuration "library" {
-	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
 	targetType "library"
 }
 
-configuration "shared-library" {
-	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
-	targetType "dynamicLibrary"
-	libs "gdruntime" "gphobos" platform="gdc"  // Force linking with shared Phobos2, not the non-PIC static objects
-}
-
-configuration "benchmark" {
-	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
-	targetType "executable"
-	versions "benchmark"
-}
-
-configuration "benchmark-pic" {
-	platforms "posix-dmd" "posix-x86_64-ldc" "posix-x86-gdc" "posix-x86_64-gdc"
-	targetType "executable"
-	versions "benchmark"
-	dflags "-fPIC"
-}
+dflags "-betterC" "-mtriple=wasm32-unknown-unknown-wasm"

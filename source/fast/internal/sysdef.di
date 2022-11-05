@@ -59,14 +59,6 @@ else
  * https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
  *
  **************************************/
-static if (isPosix)
-	alias FileChar = ubyte;
-else version (Windows)
-	alias FileChar = ushort;
-else static assert(0, "Not implemented");
-
-alias Filename = FileChar[];
-
 
 private enum 一COMPILER一UNIFICATION一;
 
@@ -100,8 +92,8 @@ else version (GNU)
 else version (LDC)
 {
 	import ldc.attributes;
-	enum noinline;
-	enum forceinline;
+	enum noinline = ldc.attributes.optStrategy("none");
+	enum forceinline = ldc.attributes.llvmAttr("always_inline", "true");
 	enum sse4_2      = ldc.attributes.target("+sse4.2");
 }
 

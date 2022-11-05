@@ -26,42 +26,21 @@
  **************************************************************************************************/
 module fast.json;
 
-import core.stdc.string;
+//import core.stdc.string;
 
-import std.ascii;
-import std.conv;
 import std.exception;
-import std.file;
-import std.json;
 import std.range;
-import std.string : representation, format;
 import std.traits;
-import std.uni;
 
 import fast.buffer;
 import fast.cstring;
 import fast.internal.sysdef;
 import fast.parsing;
+import fast.format;
+import fast.internal.helpers : logError, logInfo;
 
-
-/*******************************************************************************
- * 
- * Loads a file as JSON text and validates the used parts. This includes a UTF-8
- * validation on strings.
- *
- * Params:
- *   fname = The file name to load.
- *
- * Returns:
- *   A JSON file object exposing the `Json` API.
- *
- **************************************/
-auto parseJSONFile(uint vl = validateUsed)(in char[] fname)
-{ return Json!vl.File(fname); }
-
-/// ditto
-auto parseJSONFile(uint vl = validateUsed)(in Filename fname)
-{ return Json!vl.File(fname); }
+nothrow:
+@safe:
 
 
 /*******************************************************************************
@@ -76,28 +55,8 @@ auto parseJSONFile(uint vl = validateUsed)(in Filename fname)
  *   A `Json` struct.
  *
  **************************************/
-auto parseJSON(uint vl = validateUsed, T : const(char)[])(T text) nothrow
-{ return Json!(vl, false)(text); }
-
-
-/*******************************************************************************
- * 
- * Load a file as JSON text that is considered 100% correct. No checks will be
- * performed, not even if you try to read a number as a string.
- *
- * Params:
- *   fname = The file name to load.
- *
- * Returns:
- *   A JSON file object exposing the `Json` API.
- *
- **************************************/
-Json!trustedSource.File parseTrustedJSONFile(in char[] fname)
-{ return Json!trustedSource.File(fname); }
-
-/// ditto
-Json!trustedSource.File parseTrustedJSONFile(in Filename fname)
-{ return Json!trustedSource.File(fname); }
+auto parseJSON(ALLOC, uint vl = validateUsed, T : const(char)[])(T text) nothrow
+{ return Json!(ALLOC, vl, false)(text); }
 
 
 /*******************************************************************************
@@ -112,27 +71,8 @@ Json!trustedSource.File parseTrustedJSONFile(in Filename fname)
  *   A `Json` struct.
  *
  **************************************/
-auto parseTrustedJSON(T : const(char)[])(T text) nothrow
-{ return Json!(trustedSource, false)(text); }
-
-
-/*******************************************************************************
- *
- * Validates a JSON text file.
- *
- * Params:
- *   fname = The file name to load.
- *
- * Throws:
- *   JSONException on validation errors.
- *
- **************************************/
-void validateJSONFile(in char[] fname)
-{ Json!(validateAll, true).File(fname).skipValue(); }
-
-/// ditto
-void validateJSONFile(in Filename fname)
-{ Json!(validateAll, true).File(fname).skipValue(); }
+auto parseTrustedJSON(ALLOC, T : const(char)[])(T text) nothrow
+{ return Json!(ALLOC, trustedSource, false)(text); }
 
 
 /*******************************************************************************
@@ -142,12 +82,16 @@ void validateJSONFile(in Filename fname)
  * Params:
  *   text = The string to load.
  *
- * Throws:
- *   JSONException on validation errors.
+ * Returns:
+ *   true if verification failed
  *
  **************************************/
-void validateJSON(T : const(char)[])(T text)
-{ Json!(validateAll, true)(text).skipValue(); }
+bool validateJSON(ALLOC, T : const(char)[])(T text)
+{ 
+	auto json = Json!(ALLOC, validateAll, true)(text);
+	json.skipValue();
+	return json.hasError();
+}
 
 
 /// JSON data types returned by `peek`.
@@ -168,14 +112,15 @@ enum
 
 /// A UDA used to remap enum members or struct field names to JSON strings.
 struct JsonMapping { string[string] map; }
-
+/// A UDA for including fields in serialization
+struct serialize { }
 
 /// JSON parser state returned by the `state` property.
 struct JsonParserState {
 	const(char)*    text;
+	size_t			textlen;
 	size_t          nesting;
 }
-
 
 /*******************************************************************************
  * 
@@ -192,28 +137,32 @@ struct JsonParserState {
  *                  of JSON strings.
  * 
  **************************************/
-struct Json(uint vl = validateUsed, bool validateUtf8 = vl > trustedSource)
-	if (vl > trustedSource || !validateUtf8)
+struct Json(ALLOC, uint vl = validateUsed, bool validateUtf8 = vl > trustedSource)
+	if ((vl > trustedSource || !validateUtf8))
 {
+nothrow:
+@trusted:
 private:
 
 	enum isTrusted     = vl == trustedSource;
-	enum skipAllInter  = vl == trustedSource;
+	enum skipAllInter  = false;
 	enum isValidating  = vl >= validateUsed;
 	enum isValidateAll = vl == validateAll;
 
 	const(char*)    m_start     = void;
 	const(char)*    m_text      = void;
+	size_t			m_text_len  = 0;
 	size_t          m_nesting   = 0;
-	RaiiArray!char  m_mem;
+	ALLOC			m_alloc;
+	char[]			m_buffer;
 	bool            m_isString  = false;
+	bool			m_error		= false;
 
 
 public:
-
+	@property bool hasError() { return m_error; }
 	@disable this();
 	@disable this(this);
-
 
 	/*******************************************************************************
 	 * 
@@ -230,11 +179,15 @@ public:
 	nothrow
 	this(string text, Flag!"simdPrep" simdPrep = Yes.simdPrep)
 	{
-		import core.memory;
-		m_isString = GC.query(text.ptr) !is ReturnType!(GC.query).init;
+		//import core.memory;
+		m_isString = true;
 		this(cast(const(char)[]) text, simdPrep);
 	}
 
+	~this() {
+		if (m_buffer.length > 0)
+			m_alloc.deallocate(m_buffer);
+	}
 
 	/*******************************************************************************
 	 * 
@@ -251,15 +204,16 @@ public:
 	pure nothrow
 	this(const(char)[] text, Flag!"simdPrep" simdPrep = Yes.simdPrep)
 	{
-		if (simdPrep)
+		/*if (simdPrep)
 		{
 			// We need to append 16 zero bytes for SSE to work, and if that reallocates the char[]
 			// we can declare it unique/immutable and don't need to allocate when returning JSON strings.
 			auto oldPtr = text.ptr;
 			text ~= "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 			m_isString |= oldPtr !is text.ptr;
-		}
+		}*/
 		m_start = m_text = text.ptr;
+		m_text_len = text.length;
 		skipWhitespace!false();
 	}
 
@@ -286,7 +240,7 @@ public:
 		if (!allowNull || peek == DataType.string)
 		{
 			auto borrowed = borrowString();
-			return m_isString ? borrowed.assumeUnique() : borrowed.idup;
+			return borrowed.assumeUnique();
 		}
 		return readNull();
 	}
@@ -306,8 +260,9 @@ public:
 			if (text.length == m.json.length && memcmp(text.ptr, m.json.ptr, m.json.length) == 0)
 				return m.d;
 		m_text = oldPos;
-		static if (isValidating)
-			handleError(format("Could not find enum member `%s` in `%s`", text, T.stringof));
+		static if (isValidating) {
+			handleError(format!"Could not find enum member `%s` in `%s`"(text, T.stringof));
+		}
 		assert(0);
 	}
 
@@ -340,16 +295,20 @@ public:
 		else
 		{
 			// Otherwise we copy to a separate memory area managed by this parser instance.
-			size_t length = 0;
+			size_t len = 0;
 			bool eos = false;
+			char* mem_base = m_buffer.ptr;
+			size_t mem_start_offset = m_buffer.length;
 			goto CopyToBuffer;
 			do
 			{
 				do
 				{
-					m_mem.capacityNeeded( length + 4 );
-					uint decoded = decodeEscape( &m_mem[length] );
-					length += decoded;
+					if (m_text - m_start > m_text_len + 1) return null;
+					m_buffer = cast(char[])m_alloc.reallocate( m_buffer, m_buffer.length + 4, false );
+					mem_base = m_buffer.ptr + mem_start_offset;
+					uint decoded = decodeEscape( mem_base + len );
+					len += decoded;
 				}
 				while (*m_text == '\\');
 
@@ -357,13 +316,21 @@ public:
 				eos = scanString!validateUtf8();
 			CopyToBuffer:
 				size_t escFreeLength = m_text - escFreeStart;
-				m_mem.capacityNeeded( length + escFreeLength );
-				memcpy( m_mem.ptr + length, escFreeStart, escFreeLength );
-				length += escFreeLength;
+				
+				if (escFreeLength > 0) {
+					
+					m_buffer = cast(char[])m_alloc.reallocate( m_buffer, m_buffer.length + escFreeLength, false );
+					
+					mem_base = m_buffer.ptr + mem_start_offset;
+					import ldc.intrinsics;
+					llvm_memcpy( mem_base + len, escFreeStart, escFreeLength );
+					len += escFreeLength;
+
+				}
 			}
 			while (!eos);
 			skipOnePlusWhitespace!skipAllInter();
-			return m_mem[0 .. length];
+			return mem_base[mem_start_offset .. mem_start_offset+len];
 		}
 	}
 
@@ -519,6 +486,10 @@ public:
 				dst[1] = cast(char)(0b10_000000 | cp       & 0b00_111111);
 				return 2;
 			}
+			else if (cp <= 0x20) {
+				dst[0] = '?';
+				return 1;
+			}
 			else
 			{
 				dst[0] = cast(char)(cp);
@@ -623,11 +594,31 @@ public:
 			enum NumberOptions opt = { minus:true };
 		if (parseNumber!opt(m_text, n))
 			skipWhitespace!skipAllInter();
-		else static if (isValidating)
-			handleError(format("Could not convert JSON number to `%s`", N.stringof));
+		else static if (isValidating) {
+			handleError(format!"Could not convert JSON number to `%s`"(N.stringof));
+
+		}
 		return n;
 	}
 
+	private string format(string fmt, ARGS...)(ARGS args) @trusted {		
+			import fast.format : formattedWrite, decCharsVal;
+			size_t size_estimate = fmt.length + 16;
+			foreach (arg; args) {
+				static if (is(typeof(arg) : char[])) {
+					size_estimate += arg.length;
+				}
+				else static if (isIntegral!(typeof(arg))) {
+					size_estimate += decCharsVal(arg);
+				} else static if (isFloatingPoint!(typeof(arg)))
+					size_estimate += decChars!(typeof(arg));
+			}
+			m_buffer = cast(char[])m_alloc.reallocate( m_buffer, m_buffer.length + size_estimate, false);
+			char* buf = m_buffer.ptr + m_buffer.length - size_estimate;
+			string ret = cast(string)formattedWrite!fmt(buf, args);
+			
+			return ret;
+	}
 
 	private void skipNumber(bool skipInter)()
 	{
@@ -701,9 +692,10 @@ public:
 			static if (!skipAllInter)
 			{
 				expect(':', "between key and value");
+				if (m_error) return t;
 				skipWhitespace!false();
 			}
-
+			import ldc.intrinsics;
 			enum mapping = buildRemapTable!T;
 			foreach (m; mapping)
 			{
@@ -723,6 +715,7 @@ public:
 			static if (!skipAllInter)
 			{
 				expect(',', "between key-value pairs");
+				if (m_error) return t;
 				skipWhitespace!false();
 			}
 		}
@@ -861,7 +854,7 @@ public:
 	 *   occur.
 	 * 
 	 **************************************/
-	void keySwitch(Args...)(scope void delegate()[Args.length] dlg...)
+	void keySwitch(Args...)(scope void delegate()[Args.length] dlg...) nothrow
 	{
 		nest('{', "on start of object");
 		
@@ -879,7 +872,7 @@ public:
 			{
 				if (key.length == arg.length && memcmp(key.ptr, arg.ptr, arg.length) == 0)
 				{
-					dlg[i]();
+					(cast(void delegate() nothrow)dlg[i])();
 					goto Next;
 				}
 			}
@@ -900,7 +893,7 @@ public:
 	}
 	
 	
-	private int byKeyImpl(scope int delegate(ref const char[]) foreachBody)
+	private int byKeyImpl(scope int delegate(ref const char[]) foreachBody) nothrow
 	{
 		nest('{', "at start of foreach over object");
 
@@ -914,7 +907,7 @@ public:
 				skipWhitespace!false;
 			}
 
-			if (iterationGuts!"{}"(result, key, foreachBody, "after key-value pair"))
+			if (iterationGuts!"{}"(result, key, cast(int delegate(ref const char[]) nothrow) foreachBody, "after key-value pair"))
 				break;
 		}
 
@@ -940,10 +933,10 @@ public:
 	 *         id = json.read!uint;
 	 * ---
 	 **************************************/
-	@safe @nogc pure nothrow
-	@property int delegate(scope int delegate(ref const char[])) byKey()
+	@trusted @nogc pure nothrow
+	@property int delegate(scope int delegate(ref const char[]) nothrow) nothrow byKey()
 	{
-		return &byKeyImpl;
+		return cast(int delegate(scope int delegate(ref const char[]) nothrow) nothrow)&byKeyImpl;
 	}
 
 
@@ -960,7 +953,6 @@ public:
 	 **************************************/
 	T read(T)() if (isDynamicArray!T && !isSomeString!T)
 	{
-		import std.array;
 		Appender!T app;
 		foreach (i; this)
 			app.put(read!(typeof(T.init[0])));
@@ -989,8 +981,9 @@ public:
 		}
 		static if (isValidating)
 		{
-			if (cnt != T.length)
-				handleError(format("Static array size mismatch. Expected %s, got %s", T.length, cnt));
+			if (cnt != T.length) {
+				handleError(format!"Static array size mismatch. Expected %d, got %d"(T.length, cnt));
+			}
 		}
 		else
 		{
@@ -1012,7 +1005,7 @@ public:
 
 		int result = 0;
 		if (*m_text != ']') for (size_t idx = 0; true; idx++)
-			if (iterationGuts!"[]"(result, idx, foreachBody, "after array element"))
+			if (iterationGuts!"[]"(result, idx, cast(int delegate(const size_t) nothrow) foreachBody, "after array element"))
 				break;
 
 		unnest();
@@ -1097,7 +1090,7 @@ public:
 
 	private void skipValueImpl(bool skipInter)()
 	{
-		with (DataType) final switch (peek)
+		with (DataType) switch (peek)
 		{
 			case string:
 				skipString!skipInter();
@@ -1136,6 +1129,9 @@ public:
 				break;
 			case null_:
 				skipNull!skipInter();
+				break;
+			default:
+				
 				break;
 		}
 	}
@@ -1186,12 +1182,13 @@ public:
 	 **************************************/
 	@property const(JsonParserState) state() const
 	{
-		return JsonParserState(m_text, m_nesting);
+		return JsonParserState(m_text, m_text_len, m_nesting);
 	}
 
 	@property void state(const JsonParserState oldState)
 	{
 		m_text    = oldState.text;
+		m_text_len = oldState.textlen;
 		m_nesting = oldState.nesting;
 	}
 
@@ -1212,7 +1209,7 @@ public:
 		{
 			skipOnePlusWhitespace!false();
 			static if (isValidating)
-				if (*m_text != '\0')
+				if (*m_text != '\0') //
 					handleError("Expected end of JSON.");
 		}
 		else skipOnePlusWhitespace!skipAllInter();
@@ -1233,7 +1230,7 @@ public:
 		}
 		result = dlg(idx);
 		if (oldPos is m_text)
-			skipValueImpl!(!isValidateAll)();
+			skipValueImpl!false();
 		
 	PastValue:
 		if (*m_text == braces[1])
@@ -1271,7 +1268,7 @@ public:
 		private void seekAggregateEnd(immutable char[2] parenthesis)()
 		{
 			size_t nesting = 1;
-			while (true)
+			while (m_text - m_start < m_text_len + 1)
 			{
 				m_text.seekToAnyOf!(parenthesis ~ "\"\0");
 				final switch (*m_text)
@@ -1288,6 +1285,9 @@ public:
 					case '"':
 						// Could skip ':' or ',' here by passing `true`, but we skip it above anyways.
 						skipString!false();
+						break;
+					case '\0':
+						return;	
 				}
 			}
 		}
@@ -1317,26 +1317,30 @@ public:
 		@noinline
 		private void expectNot(string msg)
 		{
-			string tmpl = isPrintable(*m_text)
-				? "Character '%s' %s."
-				: "Byte 0x%02x %s.";
-			handleError(format(tmpl, *m_text, msg));
+			string error_msg;
+			if (isPrintable(*m_text))
+				error_msg = format!"Character '%s' %s."( *m_text, msg );
+			else
+				error_msg = format!"Byte %d %s."(*m_text, msg);
+			handleError(error_msg);
 		}
 
 
 		@noinline
 		private void expectImpl(char c, string msg)
 		{
-			string tmpl = isPrintable(*m_text)
-				? "Expected '%s', but found '%s' %s."
-				: "Expected '%s', but found byte 0x%02x %s.";
-			handleError(format(tmpl, c, *m_text, msg));
+			string error_msg;
+			if (isPrintable(*m_text))
+				error_msg = format!"Expected '%s', but found '%s' %s."(c, *m_text, msg);
+			else  error_msg = format!"Expected '%s', but found byte %d %s."(c, *m_text, msg);
+			handleError(error_msg);
 		}
 
 
 		@noinline
-		private void handleError(string msg)
+		private void handleError(T)(T msg)
 		{
+			m_error = true;
 			import fast.unicode;
 
 			size_t line;
@@ -1350,8 +1354,9 @@ public:
 			}
 			line += p is m_text;
 			size_t column = last[0 .. m_text - last].countGraphemes() + 1;
-			
-			throw new JSONException(msg, line.to!int, column.to!int);
+
+			logError(format!"%s line %d col %d"(msg, line, column));
+			//while (*m_text != '\0') m_text++;
 		}
 	}
 
@@ -1394,7 +1399,7 @@ public:
 		}
 
 		~this()
-		{
+		{	
 			static if (isValidateAll)
 			{
 				if (*json.m_text != '}')
@@ -1427,175 +1432,7 @@ public:
 		}
 	}
 
-
-	private static struct File
-	{
-		alias m_json this;
-		
-		Json m_json;
-		private size_t m_len;
-		private bool m_isMapping;
-		
-		@disable this();
-		@disable this(this);
-		
-		this(const Filename fname)
-		{
-			version (Posix)
-			{
-				import core.sys.posix.fcntl;
-				import core.sys.posix.sys.mman;
-				import core.sys.posix.unistd;
-
-				version (CRuntime_Glibc)
-					enum O_CLOEXEC = octal!2000000;
-				else version (OSX)  // Requires at least OS X 10.7 Lion
-					enum O_CLOEXEC = 0x1000000;
-				else static assert(0, "Not implemented");
-				
-				int fd = { return open(charPtr!fname, O_RDONLY | O_NOCTTY | O_CLOEXEC); }();
-				assert(fcntl(fd, F_GETFD) & FD_CLOEXEC, "Could not set O_CLOEXEC.");
-				
-				if (fd == -1)
-					throw new ErrnoException("Could not open JSON file for reading.");
-				scope(exit) close(fd);
-				
-				// Get the file size
-				stat_t info;
-				if (fstat(fd, &info) == -1)
-					throw new ErrnoException("Could not get JSON file size.");
-
-				// Ensure we have 16 extra bytes
-				size_t pagesize = sysconf(_SC_PAGESIZE);
-				ulong fsize = ulong(info.st_size + pagesize - 1) / pagesize * pagesize;
-				bool zeroPage = fsize < info.st_size + 16;
-				if (zeroPage)
-					fsize += pagesize;
-				if (fsize > size_t.max)
-					throw new Exception("JSON file too large to be mapped in RAM.");
-				m_len = cast(size_t) fsize;
-				
-				// Map the file
-				void* mapping = mmap(null, m_len, PROT_READ, MAP_PRIVATE, fd, 0);
-				if (mapping == MAP_FAILED)
-					throw new ErrnoException("Could not map JSON file.");
-				scope(failure)
-					munmap(mapping, m_len);
-
-				// Get a zero-page up behind the JSON text
-				if (zeroPage)
-				{
-					void* offs = mapping + m_len - pagesize;
-					if (mmap(offs, pagesize, PROT_READ, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0) == MAP_FAILED)
-						throw new ErrnoException("Could not map zero-page behind JSON text.");
-				}
-
-				// Initialize the parser on the JSON text
-				m_json = Json((cast(char*) mapping)[0 .. cast(size_t) info.st_size], No.simdPrep);
-			}
-			else version (Windows)
-			{
-				import core.sys.windows.winnt;
-				import core.sys.windows.winbase;
-
-				HANDLE hnd = { return CreateFileW( wcharPtr!fname, GENERIC_READ, FILE_SHARE_READ, null,
-						OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, null ); }();
-
-				if (hnd == INVALID_HANDLE_VALUE)
-					throw new FileException("Could not open JSON file for reading.");
-				scope(exit)
-					CloseHandle( hnd );
-
-				// Get the file size
-				LARGE_INTEGER fileSize = void;
-				if (!GetFileSizeEx( hnd, &fileSize ))
-					throw new Exception("Could not get JSON file size.");
-
-				// Map the file
-				HANDLE mapping = CreateFileMapping( hnd, null, PAGE_READONLY, fileSize.HighPart, fileSize.LowPart, null );
-				if (mapping == INVALID_HANDLE_VALUE)
-					throw new Exception("Could not create file mapping for JSON file.");
-				scope(exit) CloseHandle( mapping );
-
-				// View the mapping
-				void* view = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 0 );
-				if (view is null)
-					throw new Exception("Could not map view of JSON file.");
-				scope(failure)
-					UnmapViewOfFile( view );
-				
-				// Missing 64-bit version in druntime (2.071)
-				version (X86_64) struct MEMORY_BASIC_INFORMATION {
-					PVOID     BaseAddress;
-					PVOID     AllocationBase;
-					DWORD     AllocationProtect;
-					DWORD     __alignment1;
-					ULONGLONG RegionSize;
-					DWORD     State;
-					DWORD     Protect;
-					DWORD     Type;
-					DWORD     __alignment2;
-				}
-				
-				// Check if the view is 16 bytes larger than the file
-				MEMORY_BASIC_INFORMATION query = void;
-				if (!VirtualQuery( view, cast(PMEMORY_BASIC_INFORMATION)&query, query.sizeof ))
-					throw new Exception("VirtualQuery failed.");
-				
-				// Initialize the parser on the JSON text
-				char[] slice = (cast(char*) view)[0 .. cast(size_t)fileSize.QuadPart];
-				if (query.RegionSize >= fileSize.QuadPart + 16)
-				{
-					m_json = Json(slice, No.simdPrep);
-					m_isMapping = true;
-				}
-				else
-				{
-					m_json = Json(slice, Yes.simdPrep);
-					UnmapViewOfFile( view );
-				}
-			}
-			else static assert(0, "Not implemented");
-		}
-
-
-		this(const(char)[] fname)
-		{
-			import std.string;
-
-			version (Posix)
-				this( fname.representation );
-			else version (Windows)
-			{
-				import core.stdc.stdlib;
-				auto buf = cast(wchar*)alloca(string2wstringSize(fname));
-				auto fnameW = string2wstring(fname, buf);
-				this( fnameW.representation );
-			}
-			else static assert(0, "Not implemented");
-		}
-
-
-		nothrow
-		~this()
-		{
-			version (Posix)
-			{
-				import core.sys.posix.sys.mman;
-				munmap(cast(void*)m_json.m_start, m_len);
-			}
-			else version (Windows)
-			{
-				import core.sys.windows.winnt;
-				import core.sys.windows.winbase;
-				if (m_isMapping)
-					UnmapViewOfFile( cast(LPCVOID)m_json.m_start );
-			}
-			else static assert(0, "Not implemented");
-		}
-	}
 }
-
 
 private template buildRemapTable(T)
 {
@@ -1639,6 +1476,251 @@ private template buildRemapTable(T)
 }
 
 
+size_t serializationLength(T)(T t) nothrow @trusted
+	if (is(T == struct) && !hasMember!(T, "opSlice") && !hasMember!(T, "get"))
+{
+	size_t len;
+	import std.traits : hasUDA;
+	len++; // {
+	static foreach(sym; T.tupleof) {{
+		enum isPublic = __traits(getProtection, sym) == "public";
+		static assert(!hasUDA!(sym, serialize) || (isPublic && hasUDA!(sym, serialize)), "Protected field has @serialize UDA");
+		static if (isPublic && hasUDA!(sym, serialize)) {
+			if (len > 1) len += 4; // ,"":
+			else len += 3; // "":
+			enum i = sym.stringof;
+			len += i.length;				
+			
+			static if (isPointer!(typeof(sym))) 
+				len += serializationLength(*__traits(getMember, t, i));
+			else
+				len += serializationLength(__traits(getMember, t, i));
+			
+		}
+	}}
+	len++; // }
+	return len;
+}
+
+// hashmap
+size_t serializationLength(T)(T t) nothrow @trusted
+	if (is(T == struct) && hasMember!(T, "get") && hasMember!(T, "opApply"))
+{
+	size_t len;
+	len++; // {
+	foreach(key, ref val; t) {
+		if (len > 1) 
+			len++; // ,	
+
+		static if (isPointer!(typeof(key))) 
+			len += serializationLength(*key);
+		else
+			len += serializationLength(key);
+		
+		len++; // :
+		
+		static if (isPointer!(typeof(val))) 
+			len += serializationLength(*val);
+		else
+			len += serializationLength(val);
+		
+	}
+	
+	len++; // }
+	return len;
+}
+
+size_t serializationLength(T)(T t) nothrow @trusted
+	if ((isArray!T || (is(T == struct) && hasMember!(T, "opSlice"))) && !isSomeString!T)
+{	
+	size_t len;
+	len++; // [
+	foreach(i, v; arr[]) {
+		enum ChildType = typeof(v);
+		if (i > 0) {
+			len++; // ,
+		}
+		static if (isPointer!(typeof(sym))) 
+			len += serializationLength(*v);
+		else
+			len += serializationLength(v);
+	}
+	len++; // ]
+	return len;
+}
+
+private size_t serializationLength(T)(T t) nothrow @trusted
+	if (isIntegral!T && !isFloatingPoint!T)
+{
+	import fast.format : decCharsVal;
+	
+	char[8] buf;
+	char* bufptr = buf.ptr;
+	auto ret = bufptr.formattedWrite!"%d"(decCharsVal(t));
+
+	return decCharsVal(t);
+}
+private bool hasEscape(char c) {
+	if ((c <= 0x1F && c > 0xC) || (c > 0x1F && c != '"' && c != '\\')) 
+		return false;
+	else if (c == '\t') return true;
+	else if (c == '\b') return true;
+	else if (c == '\n') return true;
+	else if (c == '\r') return true;
+	else if (c == '"') return true;
+	else if (c == '\\') return true;
+	else return false; // '?'
+}
+
+private size_t serializationLength(T)(T t) nothrow @trusted
+	if (isSomeString!T)
+{	
+	import fast.format : formattedWrite, indexOf;
+	size_t i;
+	ptrdiff_t idx;
+	T substr = t;
+	do {
+		idx = substr.indexOf("\"\t\r\n\\\b");
+		if (idx > -1) {
+			i++;
+			substr = substr[idx + 1 .. $];
+		}
+	} while(idx > -1);
+	return i + (cast(void[])t).length + 2; // escapes + strlen + quotes
+}
+
+private size_t serializationLength(T)(T t) nothrow @trusted
+	if (isFloatingPoint!T)
+{	
+	import fast.format : decCharsVal;
+	return decCharsVal(t); // todo: optimize this
+}
+
+private size_t serializationLength(T)(T t) nothrow @trusted
+	if (isBoolean!T)
+{	
+	return t ? 4 : 5; // true : false
+}
+
+char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (is(T == struct) && !hasMember!(T, "opSlice") && !hasMember!(T, "get"))
+{
+	import std.traits : hasUDA;
+	char* buf_start = buf.ptr;
+	size_t offset;
+	char[] written = formattedWrite!"{"(buf.ptr + offset);
+	offset += written.length;
+	static foreach(sym; T.tupleof) {{
+		enum isPublic = __traits(getProtection, sym) == "public";
+		static assert(!hasUDA!(sym, serialize) || (isPublic && hasUDA!(sym, serialize)), "Protected field has @serialize UDA");
+		static if (isPublic && hasUDA!(sym, serialize)) {
+			alias ChildType = typeof(sym);
+			enum i = sym.stringof;
+			if (offset > 1) written = formattedWrite!`,"%s":`(buf.ptr + offset, i);
+			else written = formattedWrite!`"%s":`(buf.ptr + offset, i);
+			
+			offset += written.length;
+			static if (isPointer!(typeof(sym))) 
+				written = serializeJSON(buf[offset .. $], *__traits(getMember, t, i));
+			else
+				written = serializeJSON(buf[offset .. $], __traits(getMember, t, i));
+			// todo: Add hashmap
+			offset += written.length;
+		}
+	}}
+	written = formattedWrite!"}"(buf.ptr + offset);
+	offset += written.length;
+	return buf_start[0 .. offset];
+}
+
+char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (is(T == struct) && hasMember!(T, "get") && hasMember!(T, "opApply"))
+{
+	char* buf_start = buf.ptr;
+	size_t offset;
+	char[] written = formattedWrite!"{"(buf.ptr + offset);
+	offset += written.length;
+	foreach(key, ref val; t) {
+		if (offset > 1) {
+			written = formattedWrite!`,`(buf.ptr + offset);
+			offset += written.length;
+		}		
+
+		static if (isPointer!(typeof(key))) 
+			written = serializeJSON(buf[offset .. $], *key);
+		else
+			written = serializeJSON(buf[offset .. $], key);
+		
+		offset += written.length;
+
+		written = formattedWrite!`:`(buf.ptr + offset);
+		
+		offset += written.length;
+		static if (isPointer!(typeof(val))) 
+			written = serializeJSON(buf[offset .. $], *val);
+		else
+			written = serializeJSON(buf[offset .. $], val);
+		
+		offset += written.length;
+	}
+	
+	written = formattedWrite!"}"(buf.ptr + offset);
+	offset += written.length;
+	return buf_start[0 .. offset];
+}
+
+private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if ((isArray!T || (is(T == struct) && hasMember!(T, "opSlice"))) && !isSomeString!T)
+{	
+	char* buf_start = buf.ptr;
+	char[] written = formattedWrite!"["(buf.ptr + offset, t);
+	offset += written.length;
+	foreach(i, v; arr[]) {
+		enum ChildType = typeof(v);
+		if (i > 0) {
+			written = formattedWrite!`,`(buf.ptr + offset);
+			offset += written;
+		}
+		static if (isPointer!(typeof(sym))) 
+			written = serializeJSON(buf[offset .. $], *v);
+		else
+			written = serializeJSON(buf[offset .. $], v);
+		offset += written.length;
+	}
+	written = formattedWrite!"]"(buf.ptr + offset, t);
+	offset += written.length;
+	return buf_start[0 .. offset];
+}
+
+private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (isIntegral!T && !isFloatingPoint!T)
+{	
+	char[] written = formattedWrite!"%d"(buf.ptr, t);
+	return buf[0 .. written.length];
+}
+
+private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (isSomeString!T)
+{	
+	// escape string..?	
+	char[] written = formattedWrite!`"%s"`(buf.ptr, t);
+	return buf[0 .. written.length];
+}
+
+private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (isFloatingPoint!T)
+{	
+	char[] written = formattedWrite!`%f`(buf.ptr, t);
+	return buf[0 .. written.length];
+}
+
+private char[] serializeJSON(T)(char[] buf, T t) nothrow @trusted
+	if (isBoolean!T)
+{	
+	char[] written = t ? formattedWrite!`true`(buf.ptr) : formattedWrite!`false`(buf.ptr);
+	return buf[0 .. written.length];
+}
+
 unittest
 {
 	struct Counter
@@ -1680,21 +1762,6 @@ unittest
 				json.skipValue();
 				break;
 		}
-	}
-
-	void passFile(string fname, Counter valid)
-	{
-		auto json = parseJSONFile!validateAll(fname);
-		Counter ctr;
-		valueHandler(json, ctr);
-		assert(ctr == valid, fname);
-	}
-
-	void failFile(string fname)
-	{
-		auto json = parseJSONFile!validateAll(fname);
-		Counter ctr;
-		assertThrown!JSONException(valueHandler(json, ctr), fname);
 	}
 
 	// Tests that need to pass according to RFC 7159
