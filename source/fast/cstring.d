@@ -79,7 +79,12 @@ wchar[] string2wstring(in char[] src, wchar* dst)
 
 	return dst[0 .. dstIt - dst];
 }
-
+pure
+wchar[] string2wstring(in ushort[] src, wchar* dst)
+{
+	memcpy(dst, cast(wchar*) src.ptr, src.length);
+	return dst[0 .. src.length];
+}
 /**
  * Calculates the required buffer size in bytes for a string to wchar[] conversion.
  * Room for a terminating '\0' is included.
@@ -96,6 +101,12 @@ wchar[] string2wstring(in char[] src, wchar* dst)
  */
 @safe pure
 size_t string2wstringSize(in char[] src)
+{
+	enum limit = size_t.max / wchar.sizeof - 1;
+	return src.length <= limit ? wchar.sizeof * (src.length + 1) : size_t.max;
+}
+@safe pure
+size_t string2wstringSize(in ushort[] src)
 {
 	enum limit = size_t.max / wchar.sizeof - 1;
 	return src.length <= limit ? wchar.sizeof * (src.length + 1) : size_t.max;

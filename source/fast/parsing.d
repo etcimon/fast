@@ -411,7 +411,7 @@ bool parseNumber(NumberOptions opt, N)(ref const(char)* str, ref N n) if (isNume
 			if (significand > U(N.max) + sign)
 				return false;
 			if (sign)
-				n = -n;
+				n = cast(N)-n;
 		}
 		else if (significand > N.max)
 			return false;

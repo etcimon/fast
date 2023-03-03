@@ -96,6 +96,7 @@ Json!trustedSource.File parseTrustedJSONFile(in char[] fname)
 { return Json!trustedSource.File(fname); }
 
 /// ditto
+version(Windows){}else
 Json!trustedSource.File parseTrustedJSONFile(in Filename fname)
 { return Json!trustedSource.File(fname); }
 
@@ -131,6 +132,7 @@ void validateJSONFile(in char[] fname)
 { Json!(validateAll, true).File(fname).skipValue(); }
 
 /// ditto
+version(Windows){} else
 void validateJSONFile(in Filename fname)
 { Json!(validateAll, true).File(fname).skipValue(); }
 

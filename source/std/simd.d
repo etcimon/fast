@@ -3900,7 +3900,7 @@ bool anyLessEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 // Generate bit masks
 
 // generate a bitmask of for elements: Rn = An == Bn ? -1 : 0
-void16 maskEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -3962,7 +3962,7 @@ void16 maskEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 }
 
 // generate a bitmask of for elements: Rn = An != Bn ? -1 : 0 (SLOW)
-void16 maskNotEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskNotEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -3973,7 +3973,7 @@ void16 maskNotEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 			else static if(isOfType!(T, float4))
 				return __simd(XMM.CMPPS, a, b, 4);
 			else
-				return comp!Ver(cast(void16)maskEqual!Ver(a, b));
+				return comp!Ver(maskEqual!Ver(a, b));
 		}
 		else version(GNU)
 		{
@@ -3982,7 +3982,7 @@ void16 maskNotEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 			else static if(isOfType!(T, float4))
 				return __builtin_ia32_cmpneqps(a, b);
 			else
-				return comp!Ver(cast(void16)maskEqual!Ver(a, b));
+				return comp!Ver(maskEqual!Ver(a, b));
 		}
 		else version(LDC)
 			return ldcsimd.notEqualMask!T(a, b);
@@ -3998,7 +3998,7 @@ void16 maskNotEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 }
 
 // generate a bitmask of for elements: Rn = An > Bn ? -1 : 0
-void16 maskGreater(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskGreater(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -4066,7 +4066,7 @@ else version(GNU)
 }
 
 // generate a bitmask of for elements: Rn = An >= Bn ? -1 : 0 (SLOW)
-void16 maskGreaterEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskGreaterEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -4077,7 +4077,7 @@ void16 maskGreaterEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 			else static if(isOfType!(T, float4))
 				return __simd(XMM.CMPPS, b, a, 2);
 			else
-				return or!Ver(cast(void16)maskGreater!Ver(a, b), cast(void16)maskEqual!Ver(a, b)); // compound greater OR equal
+				return or!Ver(maskGreater!Ver(a, b), maskEqual!Ver(a, b)); // compound greater OR equal
 		}
 		else version(GNU)
 		{
@@ -4086,7 +4086,7 @@ void16 maskGreaterEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 			else static if(isOfType!(T, float4))
 				return __builtin_ia32_cmpgeps(a, b);
 			else
-				return or!Ver(cast(void16)maskGreater!Ver(a, b), cast(void16)maskEqual!Ver(a, b)); // compound greater OR equal
+				return or!Ver(maskGreater!Ver(a, b), maskEqual!Ver(a, b)); // compound greater OR equal
 		}
 		else version(LDC)
 			return ldcsimd.greaterOrEqualMask!T(a, b);
@@ -4102,7 +4102,7 @@ void16 maskGreaterEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 }
 
 // generate a bitmask of for elements: Rn = An < Bn ? -1 : 0 (SLOW)
-void16 maskLess(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskLess(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -4138,7 +4138,7 @@ void16 maskLess(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 }
 
 // generate a bitmask of for elements: Rn = An <= Bn ? -1 : 0
-void16 maskLessEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
+auto maskLessEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 {
 	version(X86_OR_X64)
 	{
@@ -4178,7 +4178,7 @@ void16 maskLessEqual(SIMDVer Ver = simdVer, T)(inout T a, inout T b)
 // Branchless selection
 
 // select elements according to: mask == true ? x : y
-T select(SIMDVer Ver = simdVer, T)(void16 mask, inout T x, inout T y)
+T select(SIMDVer Ver = simdVer, T)(auto ref mask, inout T x, inout T y)
 {
 	version(X86_OR_X64)
 	{
@@ -4194,7 +4194,7 @@ T select(SIMDVer Ver = simdVer, T)(void16 mask, inout T x, inout T y)
 					return __simd(XMM.PBLENDVB, y, x, mask);
 			}
 			else
-				return xor!Ver(cast(void16)x, and!Ver(mask, xor!Ver(cast(void16)y, cast(void16)x)));
+				return xor!Ver(x, and!Ver(mask, xor!Ver(y, x)));
 		}
 		else version(GNU_OR_LDC)
 		{
@@ -4211,7 +4211,7 @@ T select(SIMDVer Ver = simdVer, T)(void16 mask, inout T x, inout T y)
 				}
 			}
 			else
-				return xor!Ver(cast(void16)x, and!Ver(mask, xor!Ver(cast(void16)y, cast(void16)x)));
+				return xor!Ver(x, and!Ver(mask, xor!Ver(y, x)));
 		}
 	}
 	else version(ARM)
@@ -4221,7 +4221,7 @@ T select(SIMDVer Ver = simdVer, T)(void16 mask, inout T x, inout T y)
 	else
 	{
 		// simulate on any architecture without an opcode: ((b ^ a) & mask) ^ a
-		return xor!Ver(cast(void16)x, and!Ver(mask, xor!Ver(cast(void16)y, cast(void16)x)));
+		return xor!Ver(x, and!Ver(mask, xor!Ver(y, x)));
 	}
 }
 
