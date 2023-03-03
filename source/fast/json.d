@@ -1453,6 +1453,8 @@ public:
 					enum O_CLOEXEC = octal!2000000;
 				else version (OSX)  // Requires at least OS X 10.7 Lion
 					enum O_CLOEXEC = 0x1000000;
+				else version(FreeBSD) 
+					enum O_CLOEXEC = octal!2000000;
 				else static assert(0, "Not implemented");
 				
 				int fd = { return open(charPtr!fname, O_RDONLY | O_NOCTTY | O_CLOEXEC); }();
